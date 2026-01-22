@@ -1,0 +1,58 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.so
+
+# Virtual envs
+.venv/
+venv/
+
+
+# ---- IDE / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- Logs / caches ----
+*.log
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Data (do not version large datasets) ----
+/data_fake/
+/data_imgs/
+/data_processed/
+
+# If you have small helper scripts under data_processed, keep them:
+!data_processed/**/*.py
+
+# Ignore common dataset file types anywhere
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+*.pgm
+*.bmp
+*.gif
+*.webp
+*.npy
+*.npz
+*.h5
+*.hdf5
+
+# ---- Training artifacts / outputs ----
+/outputs/
+*.pth
+*.pt
+*.ckpt
+*.tsinghe
+
+# ---- Misc ----
+*.tmp
+*.swp
