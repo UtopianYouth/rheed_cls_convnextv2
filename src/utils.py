@@ -494,8 +494,20 @@ def auto_load_model(args, model, model_without_ddp, optimizer, loss_scaler, mode
         else:
             checkpoint = torch.load(args.resume, map_location='cpu')
 
-        model_without_ddp.load_state_dict(checkpoint['model'])
+        try:
+            model_without_ddp.load_state_dict(checkpoint['model'])
+        except RuntimeError as e:
+            msg = str(e)
+            if "size mismatch for head.weight" in msg or "size mismatch for head.bias" in msg:
+                raise RuntimeError(
+                    "Failed to resume because the checkpoint classification head shape does not match the current model.\n"
+                    "This usually happens when `output_dir` contains an old checkpoint trained with a different `--nb_classes` (e.g. 1000 vs your 2).\n"
+                    "Fix: (1) change `--output_dir` to a new folder, OR (2) delete old `checkpoint-*.pth` under the output folder, OR (3) run with `--auto_resume false`.\n"
+                    f"resume={args.resume}"
+                ) from e
+            raise
         print("Resume checkpoint %s" % args.resume)
+
         if 'optimizer' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
             if not isinstance(checkpoint['epoch'], str): # does not support resuming with 'best', 'best-ema'

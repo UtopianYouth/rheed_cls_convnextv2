@@ -5,6 +5,19 @@ from timm.data.constants import \
     IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
 from timm.data import create_transform
 
+
+def _to_rgb(img):
+    """Ensure images are 3-channel RGB.
+
+    RHEED images are often grayscale (L). The default normalization here assumes 3 channels.
+    """
+    try:
+        return img.convert("RGB")
+    except Exception:
+        # If it's already a tensor or non-PIL type, return as-is.
+        return img
+
+
 def build_dataset(is_train, args):
     transform = build_transform(is_train, args)
 
@@ -62,10 +75,15 @@ def build_transform(is_train, args):
         if not resize_im:
             transform.transforms[0] = transforms.RandomCrop(
                 args.input_size, padding=4)
+
+        # Ensure grayscale images (common in RHEED) are converted to RGB before ToTensor/Normalize.
+        transform.transforms.insert(0, transforms.Lambda(_to_rgb))
         return transform
 
-    t = []
+
+    t = [transforms.Lambda(_to_rgb)]
     if resize_im:
+
         # warping (no cropping) when evaluated at 384 or larger
         if args.input_size >= 384:  
             t.append(

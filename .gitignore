@@ -25,8 +25,8 @@ Thumbs.db
 
 # ---- Data (do not version large datasets) ----
 /data_fake/
-/data_imgs/
-/data_processed/
+/data_rheed/
+/data_rheed_split/
 
 # If you have small helper scripts under data_processed, keep them:
 !data_processed/**/*.py
@@ -45,6 +45,7 @@ Thumbs.db
 *.npz
 *.h5
 *.hdf5
+*.tar
 
 # ---- Training artifacts / outputs ----
 /outputs/
@@ -56,3 +57,6 @@ Thumbs.db
 # ---- Misc ----
 *.tmp
 *.swp
+
+# docs
+/docs/

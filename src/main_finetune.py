@@ -171,7 +171,12 @@ def get_args_parser():
     
     parser.add_argument('--use_amp', type=str2bool, default=False, 
                         help="Use apex AMP (Automatic Mixed Precision) or not")
+
+    # Class imbalance handling
+    parser.add_argument('--class_weights', type=float, nargs='+', default=None,
+                        help='Class weights for imbalanced dataset. Example: --class_weights 1.0 3.8')
     return parser
+
 
 def main(args):
     utils.init_distributed_mode(args)
@@ -190,6 +195,21 @@ def main(args):
         dataset_val = None
     else:
         dataset_val, _ = build_dataset(is_train=False, args=args)
+
+    # 校验 train/val 的类别映射是否一致（ImageFolder按目录名排序）
+    if dataset_val is not None and dataset_train.class_to_idx != dataset_val.class_to_idx:
+        raise RuntimeError(
+            f"train/val class_to_idx mismatch! train={dataset_train.class_to_idx}, val={dataset_val.class_to_idx}"
+        )
+
+    # 如果传了class_weights，提示其对应的类别顺序（idx顺序）
+    if utils.get_rank() == 0 and args.class_weights is not None:
+        if len(args.class_weights) != args.nb_classes:
+            raise ValueError(f"--class_weights长度({len(args.class_weights)}) != nb_classes({args.nb_classes})")
+        inv = {v: k for k, v in dataset_train.class_to_idx.items()}
+        ordered = [inv[i] for i in range(args.nb_classes)]
+        print(f"✓ class_to_idx一致: {dataset_train.class_to_idx}")
+        print(f"✓ class_weights按类别索引顺序生效: idx->name = {ordered}")
 
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
@@ -288,8 +308,8 @@ def main(args):
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    print("Model = %s" % str(model_without_ddp))
-    print('number of params:', n_parameters)
+    # print("Model = %s" % str(model_without_ddp))  # 模型结构太长,已注释
+    print('✓ 模型加载完成: {} ({:.1f}M 参数)'.format(args.model, n_parameters/1e6))
 
     eff_batch_size = args.batch_size * args.update_freq * utils.get_world_size()
     num_training_steps_per_epoch = len(dataset_train) // eff_batch_size
@@ -316,7 +336,8 @@ def main(args):
         assigner = None
 
     if assigner is not None:
-        print("Assigned values = %s" % str(assigner.values))
+        # print("Assigned values = %s" % str(assigner.values))  # Layer decay值已注释
+        pass  # 占位符,保持语法正确
     
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=False)
@@ -334,9 +355,15 @@ def main(args):
     elif args.smoothing > 0.:
         criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
     else:
-        criterion = torch.nn.CrossEntropyLoss()
+        if args.class_weights is not None:
+            class_weights = torch.tensor(args.class_weights, dtype=torch.float32).to(device)
+            criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+            print(f"Using class weights: {class_weights.cpu().numpy()}")
+        else:
+            criterion = torch.nn.CrossEntropyLoss()
     
     print("criterion = %s" % str(criterion))
+
 
     utils.auto_load_model(
         args=args, model=model, model_without_ddp=model_without_ddp,

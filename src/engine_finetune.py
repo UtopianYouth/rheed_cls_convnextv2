@@ -31,8 +31,15 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     update_freq = args.update_freq
     use_amp = args.use_amp
     optimizer.zero_grad()
+    
+    # Support for limiting batches (sanity check mode)
+    max_train_batches = getattr(args, 'max_train_batches', None)
 
     for data_iter_step, (samples, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        # Early stop for sanity check
+        if max_train_batches is not None and data_iter_step >= max_train_batches:
+            print(f"Stopping training at batch {data_iter_step} (max_train_batches={max_train_batches})")
+            break
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % update_freq == 0:
             adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
@@ -118,7 +125,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 @torch.no_grad()
-def evaluate(data_loader, model, device, use_amp=False):
+def evaluate(data_loader, model, device, use_amp=False, max_val_batches=None):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -127,7 +134,12 @@ def evaluate(data_loader, model, device, use_amp=False):
     # switch to evaluation mode
     model.eval()
 
-    for batch in metric_logger.log_every(data_loader, 10, header):
+    for batch_idx, batch in enumerate(metric_logger.log_every(data_loader, 10, header)):
+        # Early stop for sanity check
+        if max_val_batches is not None and batch_idx >= max_val_batches:
+            print(f"Stopping validation at batch {batch_idx} (max_val_batches={max_val_batches})")
+            break
+            
         images = batch[0]
         target = batch[-1]
 
