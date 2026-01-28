@@ -1,6 +1,22 @@
+"""FCMAE 预训练入口脚本（自监督）。
+
+你可以把它当作“组装器”：
+- 解析命令行参数（模型大小、mask_ratio、LR、epochs、分布式等）
+- 构建 transform + `ImageFolder(data_path/train)`
+- 构建 FCMAE 模型（`src.models.fcmae`）
+- 构建 optimizer + scaler
+- 进入训练循环：`src.engine_pretrain.train_one_epoch`
+
+数据约定：`--data_path` 指向一个目录，且其下必须有 `train/`（ImageFolder 格式）。
+注意：RHEED 图片常见为灰度图，本文件会在 transform 最前面把 PIL 图像转为 RGB，
+以匹配 ImageNet 的 mean/std 归一化。
+"""
+
+
 import argparse
 import datetime
 import numpy as np
+
 import time
 import json
 import os
@@ -24,8 +40,28 @@ from src import utils
 from src.utils import NativeScalerWithGradNormCount as NativeScaler
 from src.utils import str2bool
 
+
+def _to_rgb(img):
+    """确保输入为 3 通道 RGB（RHEED 常见为灰度图）。"""
+    try:
+        return img.convert("RGB")
+    except Exception:
+        return img
+
+
 def get_args_parser():
+    """构建预训练阶段的命令行参数.
+
+    你最关心的几个参数: 
+    - `--model`: 选择 `fcmae.py` 里定义的模型规模 (tiny/base/large/...) .
+    - `--data_path`: 数据根目录 (需要包含 `train/` 子目录) .
+    - `--mask_ratio`: MAE mask 比例, 越大越难.
+    - `--batch_size`/`--update_freq`: 单卡 batch 与梯度累积, 决定有效 batch size.
+    - `--blr`: base lr (会按有效 batch size 自动换算成 `--lr`) .
+    - `--output_dir`/`--log_dir`: checkpoint 与 tensorboard.
+    """
     parser = argparse.ArgumentParser('FCMAE pre-training', add_help=False)
+
     parser.add_argument('--batch_size', default=64, type=int,
                         help='Per GPU batch size')
     parser.add_argument('--epochs', default=800, type=int)
@@ -94,6 +130,16 @@ def get_args_parser():
     return parser
 
 def main(args):
+    """预训练主函数.
+
+    结构上分为 6 步: 
+    1) 初始化分布式 (可选)
+    2) 固定随机种子 + cudnn 配置
+    3) 构建训练集 (`ImageFolder(data_path/train)`) 与 sampler/dataloader
+    4) 构建模型 (FCMAE) 并包 DDP (可选) 
+    5) 构建 optimizer + AMP scaler, 支持自动恢复 (resume/auto_resume) 
+    6) 循环epoch: 调用 `engine_pretrain.train_one_epoch` + 保存checkpoint
+    """
     utils.init_distributed_mode(args)
 
     print(args)
@@ -108,10 +154,12 @@ def main(args):
     
     # simple augmentation
     transform_train = transforms.Compose([
+            transforms.Lambda(_to_rgb),
             transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
     dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
     print(dataset_train)
 

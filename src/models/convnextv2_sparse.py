@@ -6,9 +6,20 @@
 # LICENSE file in the root directory of this source tree.
 
 
+"""ConvNeXtV2 的稀疏版本（用于 FCMAE 预训练的 encoder）。
+
+这个实现依赖 `MinkowskiEngine`：
+- `to_sparse` 会把密集特征图转换为稀疏张量（只对未 mask 的位置计算），减少计算量。
+- 每个 Block 使用 Minkowski 的 depthwise conv / linear / GELU 等。
+
+你通常不需要直接调用它：
+- `fcmae.FCMAE` 内部会构建 `SparseConvNeXtV2` 作为 encoder。
+"""
+
 import torch
 import torch.nn as nn
 from timm.models.layers import trunc_normal_
+
 
 from src.models.utils import (
     LayerNorm,
@@ -113,13 +124,40 @@ class SparseConvNeXtV2(nn.Module):
             nn.init.constant_(m.linear.bias, 0)
 
     def upsample_mask(self, mask, scale):
+        """把 patch 级 mask 上采样到特征图分辨率。
+
+        在 FCMAE 中，mask 是按 patch（例如 32x32）生成的二维网格。
+        encoder 的 early feature map 分辨率更高，需要把 mask repeat 到对应分辨率。
+
+        Args:
+            mask: shape `(N, L)`，L 为 patch 数（
+            scale: 上采样倍率（通常是 2^(num_stages-1)）。
+
+        Returns:
+            Tensor: shape `(N, H, W)` 的 mask（1=mask，0=keep）。
+        """
         assert len(mask.shape) == 2
         p = int(mask.shape[1] ** .5)
         return mask.reshape(-1, p, p).\
                     repeat_interleave(scale, axis=1).\
                     repeat_interleave(scale, axis=2)
 
+
     def forward(self, x, mask):
+        """稀疏 encoder 前向。
+
+        Args:
+            x: 输入图片 `(N, 3, H, W)`。
+            mask: patch 级 mask `(N, L)`，0=keep，1=mask。
+
+        Returns:
+            Tensor: densify 之后的特征图（dense），供 FCMAE decoder 使用。
+
+        实现思路：
+        - 先把 patch 级 mask 上采样到 stem 输出的分辨率，并把被 mask 的位置置零（等价于“移除”）。
+        - `to_sparse` 将密集特征图转成稀疏张量（只在非零/有效位置计算）。
+        - 经过 4 个 stage 的 Minkowski block 后，再 `dense()` 回到普通张量。
+        """
         num_stages = len(self.stages)
         mask = self.upsample_mask(mask, 2**(num_stages-1))        
         mask = mask.unsqueeze(1).type_as(x)

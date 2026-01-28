@@ -1,15 +1,23 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
+"""通用训练工具集 (预训练与微调共用) 。
 
-# All rights reserved.
+这个文件提供了“训练框架的地基”，你在读代码时可以按模块理解: 
 
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
+- 参数解析辅助: `str2bool`
+- 日志/统计: `SmoothedValue`、`MetricLogger`、`TensorboardLogger`、`WandbLogger`
+- 分布式训练: `init_distributed_mode`、`get_rank/get_world_size`、`is_main_process`
+- Checkpoint: `save_model`、`auto_load_model`、`load_state_dict`
+- 优化/调度: `cosine_scheduler`、`adjust_learning_rate`
+- 权重兼容: `remap_checkpoint_keys` (把稀疏/Minkowski 的权重名映射到 dense ConvNeXtV2) 
 
+读懂它，你基本就能串起: 
+- `main_pretrain.py` / `main_finetune.py` 如何初始化分布式、如何保存/恢复、如何调学习率。
+"""
 
 import argparse
 import os
 import math
 import time
+
 from collections import defaultdict, deque
 import datetime
 import numpy as np
@@ -101,11 +109,21 @@ class SmoothedValue(object):
 
 
 class MetricLogger(object):
+    """训练过程中的指标聚合与打印。
+
+    典型用法: 
+    - 在 `engine_*` 里创建 `MetricLogger`，每个 step 更新 loss/lr/acc 等。
+    - `log_every` 会以固定频率打印 ETA、时间、显存占用等。
+
+    它本质上是一个 `dict[str, SmoothedValue]` 的包装器。
+    """
+
     def __init__(self, delimiter="\t"):
+
         self.meters = defaultdict(SmoothedValue)
         self.delimiter = delimiter
 
-    def update(self, **kwargs):
+    def update(self, kwargs):
         for k, v in kwargs.items():
             if v is None:
                 continue
@@ -195,7 +213,7 @@ class TensorboardLogger(object):
         else:
             self.step += 1
 
-    def update(self, head='scalar', step=None, **kwargs):
+    def update(self, head='scalar', step=None, kwargs):
         for k, v in kwargs.items():
             if v is None:
                 continue
@@ -272,10 +290,10 @@ def setup_for_distributed(is_master):
     import builtins as __builtin__
     builtin_print = __builtin__.print
 
-    def print(*args, **kwargs):
+    def print(*args, kwargs):
         force = kwargs.pop('force', False)
         if is_master or force:
-            builtin_print(*args, **kwargs)
+            builtin_print(*args, kwargs)
 
     __builtin__.print = print
 
@@ -304,13 +322,28 @@ def is_main_process():
     return get_rank() == 0
 
 
-def save_on_master(*args, **kwargs):
+def save_on_master(*args, kwargs):
     if is_main_process():
-        torch.save(*args, **kwargs)
+        torch.save(*args, kwargs)
 
 def init_distributed_mode(args):
+    """初始化分布式训练 (DDP) 运行环境。
+
+    该函数会根据不同的启动方式自动推断 rank/world_size/local_rank: 
+    - torchrun: 环境变量 `RANK/WORLD_SIZE/LOCAL_RANK`
+    - slurm: `SLURM_PROCID`
+    - itp/ompi: `OMPI_COMM_WORLD_*`
+
+    作用: 
+    - 设置 `args.rank/args.world_size/args.gpu`
+    - 初始化 `torch.distributed.init_process_group`
+    - 调用 `setup_for_distributed` 让非 rank0 默认不打印
+
+    如果检测不到分布式环境，会设置 `args.distributed=False` 并直接返回。
+    """
 
     if args.dist_on_itp:
+
         args.rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
         args.world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
         args.gpu = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
@@ -357,7 +390,20 @@ def all_reduce_mean(x):
         return x
 
 def load_state_dict(model, state_dict, prefix='', ignore_missing="relative_position_index"):
+    """更“宽容”的 state_dict 加载。
+
+    和 `model.load_state_dict(strict=True)` 不同: 
+    - 会收集 missing/unexpected keys 并打印，而不是直接中断 (便于微调时丢 head、丢 decoder) 。
+    - `ignore_missing` 允许忽略包含特定子串的 missing key (默认忽略相对位置等权重) 。
+
+    Args:
+        model: 目标模型。
+        state_dict: 待加载权重。
+        prefix: 可选前缀 (用于从子模块加载) 。
+        ignore_missing: 用 `|` 分隔的子串列表；若 missing key 包含任一子串则忽略。
+    """
     missing_keys = []
+
     unexpected_keys = []
     error_msgs = []
     # copy state_dict so _load_from_state_dict can modify it
@@ -406,7 +452,18 @@ def load_state_dict(model, state_dict, prefix='', ignore_missing="relative_posit
 
 
 class NativeScalerWithGradNormCount:
+    """AMP GradScaler 的轻量封装 (来自 DeiT/MAE 系列代码) 。
+
+    作用: 
+    - 在 AMP 模式下完成: scale loss → backward → unscale → clip (可选) → optimizer.step → scaler.update
+    - 同时返回梯度范数，便于日志记录
+
+    在本仓库中: 
+    - 预训练与微调都会创建并传入 (即使 `use_amp=False`，也可能只是作为占位) 。
+    """
+
     state_dict_key = "amp_scaler"
+
 
     def __init__(self):
         self._scaler = torch.cuda.amp.GradScaler(enabled=torch.cuda.is_available())
@@ -436,7 +493,17 @@ class NativeScalerWithGradNormCount:
 
 
 def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
+    """计算一组参数的梯度范数 (用于日志/监控) 。
+
+    Args:
+        parameters: 参数列表或单个 tensor。
+        norm_type: 范数类型 (2 表示 L2，inf 表示无穷范数) 。
+
+    Returns:
+        torch.Tensor: 标量张量 (梯度范数) 。
+    """
     if isinstance(parameters, torch.Tensor):
+
         parameters = [parameters]
     parameters = [p for p in parameters if p.grad is not None]
     norm_type = float(norm_type)
@@ -450,7 +517,20 @@ def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
     return total_norm
 
 def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, model_ema=None):
+    """保存 checkpoint (rank0 执行) 。
+
+    保存内容: 
+    - `model`: 一般保存 `model_without_ddp.state_dict()`，避免包含 DDP wrapper
+    - `optimizer`: 优化器状态
+    - `scaler`: AMP scaler 状态 (即使不用 AMP 也会保存一个兼容结构) 
+    - `epoch`: 当前 epoch (也可能是字符串，如 "best") 
+    - `args`: 训练参数快照
+    - 可选: `model_ema`
+
+    另外会根据 `save_ckpt_freq/save_ckpt_num` 自动删除旧 checkpoint，避免占满磁盘。
+    """
     output_dir = Path(args.output_dir)
+
     epoch_name = str(epoch)
     checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % epoch_name)]
     for checkpoint_path in checkpoint_paths:
@@ -474,7 +554,18 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, mo
             os.remove(old_ckpt)
 
 def auto_load_model(args, model, model_without_ddp, optimizer, loss_scaler, model_ema=None):
+    """自动恢复训练 (resume/auto_resume) 。
+
+    行为: 
+    - 若 `args.auto_resume=True` 且 `args.resume` 为空，会在 `output_dir` 下寻找最新的 `checkpoint-*.pth`。
+    - 加载模型权重；若同时包含 optimizer/epoch/scaler，也会恢复训练状态。
+
+    你在复现时最常遇到的坑: 
+    - 微调时 `--nb_classes` 改了，但 `output_dir` 里残留旧 checkpoint，会触发 head shape mismatch。
+      该函数已经把这个错误包装成更易读的提示。
+    """
     output_dir = Path(args.output_dir)
+
     if args.auto_resume and len(args.resume) == 0:
         import glob
         all_checkpoints = glob.glob(os.path.join(output_dir, 'checkpoint-*.pth'))
@@ -525,7 +616,22 @@ def auto_load_model(args, model, model_without_ddp, optimizer, loss_scaler, mode
 
 def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epochs=0,
                      start_warmup_value=0, warmup_steps=-1):
+    """生成 per-iteration 的 cosine schedule (常用于 lr 或 wd) 。
+
+    Args:
+        base_value: 初始值 (warmup 后的峰值) 。
+        final_value: 最终值 (cosine 末端) 。
+        epochs: 总 epoch。
+        niter_per_ep: 每个 epoch 的 iteration 数。
+        warmup_epochs: warmup 的 epoch 数。
+        start_warmup_value: warmup 起始值。
+        warmup_steps: 若 >0，则用 step 数覆盖 warmup_epochs。
+
+    Returns:
+        np.ndarray: 长度为 `epochs * niter_per_ep` 的 schedule。
+    """
     warmup_schedule = np.array([])
+
     warmup_iters = warmup_epochs * niter_per_ep
     if warmup_steps > 0:
         warmup_iters = warmup_steps
@@ -557,7 +663,24 @@ def adjust_learning_rate(optimizer, epoch, args):
     return lr
 
 def remap_checkpoint_keys(ckpt):
+    """把 FCMAE/sparse encoder 的 checkpoint key 映射成 dense ConvNeXtV2 可加载的形式。
+
+    你会在 `main_finetune.py --finetune` 看到它的调用。
+
+    主要处理: 
+    - 去掉 `encoder.` 前缀
+    - 把 Minkowski 的 `kernel` 参数 reshape 成普通 Conv2d 的 `weight`
+    - 处理 `ln/linear` 的命名差异
+    - reshape GRN 的参数形状 (dense 版是 `(1,1,1,dim)`) 
+
+    Args:
+        ckpt: 原始 `state_dict` (通常是 `checkpoint['model']`) 。
+
+    Returns:
+        OrderedDict: 可直接喂给 `model.load_state_dict` 的权重字典。
+    """
     new_ckpt = OrderedDict()
+
     for k, v in ckpt.items():
         if k.startswith('encoder'):
             k = '.'.join(k.split('.')[1:]) # remove encoder in the name

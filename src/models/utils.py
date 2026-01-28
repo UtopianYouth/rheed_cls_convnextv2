@@ -6,11 +6,23 @@
 # LICENSE file in the root directory of this source tree.
 
 
+"""模型用到的一些基础层（dense + Minkowski/sparse 版本）。
+
+这里同时提供：
+- dense 版：`LayerNorm`、`GRN`（用于 `convnextv2.py`）
+- sparse 版：`MinkowskiLayerNorm`、`MinkowskiGRN`、`MinkowskiDropPath`
+
+注意：
+- 这些 Minkowski* 层只有在安装了 `MinkowskiEngine` 时才可用（主要给预训练用）。
+- 微调（分类）不依赖 MinkowskiEngine。
+"""
+
 import numpy.random as random
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 try:
     from MinkowskiEngine import SparseTensor  # type: ignore

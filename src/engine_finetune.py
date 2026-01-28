@@ -1,15 +1,18 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
+"""微调（监督分类）训练与评估循环。
 
-# All rights reserved.
+这个文件对应 `main_finetune.py` 的核心训练逻辑：
+- `train_one_epoch`: 训练一个 epoch（支持 mixup、EMA、可选 AMP）
+- `evaluate`: 在验证集上计算 top-1/top-5 accuracy 与 loss
 
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-
+复现时你可以按这条链路阅读：
+`main_finetune.py` → (build_dataset/build_dataloader) → `train_one_epoch/evaluate` → `utils.save_model`。
+"""
 
 import math
 from typing import Iterable, Optional
 
 import torch
+
 
 from timm.data import Mixup
 from timm.utils import accuracy, ModelEma
@@ -22,6 +25,33 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
                     model_ema: Optional[ModelEma] = None, mixup_fn: Optional[Mixup] = None, 
                     log_writer=None, args=None):
+    """训练一个 epoch（监督分类）。
+
+    关键点（建议结合代码逐行看一遍）：
+    - **LR 调度**：每 `update_freq` 个 step 调一次 `adjust_learning_rate`（按 iteration 而不是 epoch）。
+    - **梯度累积**：`update_freq>1` 时会把 loss 除以 `update_freq`，并在累积到位后再 `optimizer.step()`。
+    - **mixup/cutmix**：若启用，targets 会变成软标签，loss 使用 `SoftTargetCrossEntropy`。
+    - **AMP**：`args.use_amp=true` 时走 autocast + scaler 分支；否则全精度 backward。
+    - **EMA**：可选 `ModelEma`，在每次 optimizer step 后更新。
+
+    Args:
+        model: 分类模型（ConvNeXtV2）。
+        criterion: 损失函数（CE/LabelSmoothing/SoftTarget 或加权 CE）。
+        data_loader: 训练 dataloader（DistributedSampler）。
+        optimizer: 优化器。
+        device: cuda/cpu。
+        epoch: 当前 epoch 编号。
+        loss_scaler: AMP 用的 scaler（即使不用 AMP 也会传入，但走全精度分支）。
+        max_norm: 梯度裁剪阈值（AMP 分支支持）。
+        model_ema: EMA 包装器（可选）。
+        mixup_fn: mixup/cutmix 变换（可选）。
+        log_writer: TensorboardLogger（仅 rank0）。
+        args: 命令行参数。
+
+    Returns:
+        dict: 本 epoch 的平均统计量（loss、lr、acc 等）。
+    """
+
     model.train(True)
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
@@ -126,6 +156,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 @torch.no_grad()
 def evaluate(data_loader, model, device, use_amp=False, max_val_batches=None):
+    """在验证集上评估模型。
+
+    说明：
+    - 返回 `acc1/acc5/loss` 的全局平均（分布式下会同步）。
+    - `use_amp=True` 会在前向时使用 autocast（仅影响速度/显存，一般不影响指标）。
+    - `max_val_batches` 主要用于快速 sanity check（只跑前 N 个 batch）。
+    """
+
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")

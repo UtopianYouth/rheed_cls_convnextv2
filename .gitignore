@@ -24,9 +24,9 @@ Thumbs.db
 .ruff_cache/
 
 # ---- Data (do not version large datasets) ----
-/data_fake/
 /data_rheed/
-/data_rheed_split/
+/data_finetune/
+/data_pretrain/
 
 # If you have small helper scripts under data_processed, keep them:
 !data_processed/**/*.py

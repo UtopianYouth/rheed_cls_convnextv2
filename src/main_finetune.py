@@ -1,6 +1,24 @@
+"""ConvNeXtV2 微调入口脚本（监督分类）。
+
+你可以把它当作“分类训练的总控”：
+- 通过 `datasets.build_dataset` 构建 train/val（支持 `image_folder`）
+- 构建分类模型 `convnextv2.<model>`
+- （可选）从 MAE/FCMAE checkpoint 加载 encoder 权重：`--finetune`
+- 构建 optimizer / loss / mixup / EMA
+- 训练：`engine_finetune.train_one_epoch`
+- 评估：`engine_finetune.evaluate`
+
+RHEED 数据集常用配置：
+- `--data_set image_folder`
+- `--data_path data_rheed_split/train`
+- `--eval_data_path data_rheed_split/val`
+- `--nb_classes <你的类别数>`
+"""
+
 import argparse
 import datetime
 import numpy as np
+
 import time
 import json
 import os
@@ -24,7 +42,17 @@ from src.utils import str2bool, remap_checkpoint_keys
 from src.models import convnextv2
 
 def get_args_parser():
+    """构建微调阶段命令行参数。
+
+    你最常需要调的参数：
+    - **数据/类别**：`--data_set image_folder` + `--data_path` + `--eval_data_path` + `--nb_classes`
+    - **加载预训练**：`--finetune <checkpoint.pth>`（会自动丢弃 decoder/mask_token 等无关权重）
+    - **增强**：`--mixup/--cutmix/--aa/--reprob` 等
+    - **优化**：`--blr/--weight_decay/--layer_decay/--warmup_epochs`
+    - **不均衡**：`--class_weights w0 w1 ...`（按 ImageFolder 的 `class_to_idx` 顺序）
+    """
     parser = argparse.ArgumentParser('FCMAE fine-tuning', add_help=False)
+
     parser.add_argument('--batch_size', default=64, type=int,
                         help='Per GPU batch size')
     parser.add_argument('--epochs', default=100, type=int)
@@ -179,8 +207,22 @@ def get_args_parser():
 
 
 def main(args):
+    """微调主函数（训练/评估）。
+
+    推荐你用“从上到下”的方式读：
+    1) 分布式与随机种子
+    2) `build_dataset` 得到 train/val + class_to_idx 校验
+    3) 构建 dataloader、mixup_fn
+    4) 构建 ConvNeXtV2 分类模型
+    5) 若传 `--finetune`：加载预训练权重（自动去 decoder，重映射 key）
+    6) 构建 optimizer + criterion（可选 class_weights）
+    7) 训练循环：train_one_epoch → evaluate → 保存 best
+
+    你改进实验时常从这里入手加：更多指标（F1/AUC）、更复杂的采样策略、不同的数据增强等。
+    """
     utils.init_distributed_mode(args)
     print(args)
+
     device = torch.device(args.device)
 
     # fix the seed for reproducibility

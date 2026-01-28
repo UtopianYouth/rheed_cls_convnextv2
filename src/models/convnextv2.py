@@ -5,9 +5,20 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""ConvNeXtV2 分类模型（dense 版本，用于微调/监督训练）。
+
+重要概念：
+- 模型由 4 个 stage 组成，每个 stage 有若干 `Block`。
+- `forward_features`：输入图像 → 下采样/特征提取 → 全局平均池化 → LayerNorm
+- `forward`：`forward_features` 后接分类 head（Linear）输出 logits
+
+`main_finetune.py` 会通过 `convnextv2.__dict__[args.model]` 来构建实例。
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from timm.models.layers import trunc_normal_, DropPath
 from src.models.utils import LayerNorm, GRN
 
@@ -95,10 +106,21 @@ class ConvNeXtV2(nn.Module):
             nn.init.constant_(m.bias, 0)
 
     def forward_features(self, x):
+        """提取特征并输出 pooled embedding。
+
+        输入/输出形状：
+        - 输入：`(N, C, H, W)`，通常 `C=3`
+        - 输出：`(N, dims[-1])`
+
+        细节：
+        - 每个 stage 前会经过对应的 downsample layer（stem + 3 次 stride=2 下采样）。
+        - 最后对空间维度做全局平均池化，再过 `nn.LayerNorm`。
+        """
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.stages[i](x)
         return self.norm(x.mean([-2, -1])) # global average pooling, (N, C, H, W) -> (N, C)
+
 
     def forward(self, x):
         x = self.forward_features(x)

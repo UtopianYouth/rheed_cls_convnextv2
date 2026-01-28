@@ -24,8 +24,8 @@ fi
 
 # 默认参数
 OUTPUT_DIR="finetune_rheed_$(date +%Y%m%d_%H%M%S)"
-BATCH_SIZE=1
-EPOCHS=1
+BATCH_SIZE=32
+EPOCHS=100
 BASE_LR=5e-4
 
 # 类别权重
@@ -36,8 +36,8 @@ if [ -n "$CLASS_WEIGHTS" ]; then
 fi
 
 # 使用划分后的数据集
-DATA_PATH="data_rheed_split/train"
-VAL_PATH="data_rheed_split/val"
+DATA_PATH="data_rheed/train"
+VAL_PATH="data_rheed/val"
 
 echo "开始训练 - 输出目录: outputs/$OUTPUT_DIR"
 

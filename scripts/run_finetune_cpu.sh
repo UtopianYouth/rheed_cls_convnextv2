@@ -12,12 +12,12 @@ BASE_LR=5e-4
 NUM_WORKERS=2
 
 # 使用划分后的数据集
-DATA_PATH="data_rheed_split/train"
-VAL_PATH="data_rheed_split/val"
+DATA_PATH="data_rheed/train"
+VAL_PATH="data_rheed/val"
 
 # 检查数据集是否存在
 if [ ! -d "$DATA_PATH" ]; then
-    echo "❌ 错误: 数据集目录不存在: $DATA_PATH"
+    echo "错误: 数据集目录不存在: $DATA_PATH"
     echo "请先运行: python scripts/split_dataset_simple.py"
     exit 1
 fi

@@ -1,13 +1,18 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
+"""优化器构建与参数分组（主要服务于 `main_finetune.py`）。
 
-# All rights reserved.
+这个文件解决两个常见问题：
+- **参数分组**：对 bias/Norm/一维参数不做 weight decay，其余做 decay。
+- **layer-wise lr decay**：对 ConvNeXtV2 不同层设置不同 `lr_scale`（靠近 head 的层学习率更大）。
 
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
+`main_finetune.py` 中：
+- `LayerDecayValueAssigner` + `create_optimizer` 会共同实现 layer decay。
 
+提示：这里大量代码来自 timm/unilm/beit 的优化器工厂改写。
+"""
 
 import torch
 from torch import optim as optim
+
 
 from timm.optim.adafactor import Adafactor
 from timm.optim.adahessian import Adahessian
@@ -34,9 +39,23 @@ except Exception:
 
 
 def get_num_layer_for_convnext_single(var_name, depths):
+    """将参数名映射到 layer_id（single 策略）。
+
+    这里的 layer_id 用于 layer-wise lr decay。
+
+    规则（和 ConvNeXtV2 的模块命名对应）：
+    - `downsample_layers.{stage}` 作为一个层级
+    - `stages.{stage}.{block}` 作为一个层级
+    - 其他（如 `norm/head`）放到最后一层
+
+    Args:
+        var_name: `model.named_parameters()` 的参数名。
+        depths: ConvNeXtV2 每个 stage 的 block 数，例如 tiny 为 `[3,3,9,3]`。
+
+    Returns:
+        int: layer_id（从 0/1 开始的离散编号）。
     """
-    Each layer is assigned distinctive layer ids
-    """
+
     if var_name.startswith("downsample_layers"):
         stage_id = int(var_name.split('.')[1])
         layer_id = sum(depths[:stage_id]) + 1
@@ -53,11 +72,17 @@ def get_num_layer_for_convnext_single(var_name, depths):
 
 
 def get_num_layer_for_convnext(var_name):
+    """将参数名映射到 layer_id（group 策略）。
+
+    这个策略把 ConvNeXtV2（尤其是 base/large）粗粒度地分成 12 个组：
+    - stage2（深层）按每 3 个 block 合并成一组
+    - downsample 层也会被归到相邻的组
+
+    这样做的动机：对很深的网络，逐层衰减会太细；按组衰减更稳定。
+
+    参考实现来自 unilm/beit 的 `optim_factory.py`。
     """
-    Divide [3, 3, 27, 3] layers into 12 groups; each group is three 
-    consecutive blocks, including possible neighboring downsample layers;
-    adapted from https://github.com/microsoft/unilm/blob/master/beit/optim_factory.py
-    """
+
     num_max_layer = 12
     if var_name.startswith("downsample_layers"):
         stage_id = int(var_name.split('.')[1])
@@ -83,7 +108,16 @@ def get_num_layer_for_convnext(var_name):
         return num_max_layer + 1
 
 class LayerDecayValueAssigner(object):
+    """根据 layer_id 提供 lr_scale（用于 layer-wise lr decay）。
+
+    用法（见 `main_finetune.py`）：
+    - 根据 `args.layer_decay` 生成一串 `values`
+    - 通过 `get_layer_id(name)` 把参数名映射到 layer_id
+    - 通过 `get_scale(layer_id)` 返回该层的 lr 缩放因子
+    """
+
     def __init__(self, values, depths=[3,3,27,3], layer_decay_type='single'):
+
         self.values = values
         self.depths = depths
         self.layer_decay_type = layer_decay_type
@@ -99,7 +133,20 @@ class LayerDecayValueAssigner(object):
 
 
 def get_parameter_groups(model, weight_decay=1e-5, skip_list=(), get_num_layer=None, get_layer_scale=None):
+    """把模型参数拆成多个 param_groups（用于 AdamW/SGD 等优化器）。
+
+    分组逻辑：
+    - 1D 参数、bias、以及 `skip_list` 中的参数：`no_decay`（weight_decay=0）
+    - 其他参数：`decay`（weight_decay=weight_decay）
+    - 如果提供 `get_num_layer/get_layer_scale`：会进一步按 layer_id 切分，并写入 `lr_scale`
+
+    返回的每个 group 结构：
+    - `params`: 参数列表
+    - `weight_decay`: 当前组的 weight decay
+    - `lr_scale`: 当前组学习率缩放（可选）
+    """
     parameter_group_names = {}
+
     parameter_group_vars = {}
 
     for name, param in model.named_parameters():
@@ -142,7 +189,18 @@ def get_parameter_groups(model, weight_decay=1e-5, skip_list=(), get_num_layer=N
 
 
 def create_optimizer(args, model, get_num_layer=None, get_layer_scale=None, filter_bias_and_bn=True, skip_list=None):
+    """根据命令行参数创建优化器。
+
+    这个函数做两步：
+    1) 先调用 `get_parameter_groups` 得到 param_groups（含可选 lr_scale）
+    2) 再根据 `args.opt` 选择具体优化器（AdamW/SGD/RAdam/...，以及 apex fused 版本）
+
+    注意：
+    - 当 `filter_bias_and_bn=True` 时，会把 weight_decay 从优化器级别移到 param_groups 里。
+    - `args.lr` 必须在外部提前算好（`main_finetune.py` 会用 `blr` 和有效 batch size 推导）。
+    """
     opt_lower = args.opt.lower()
+
     weight_decay = args.weight_decay
     # if weight_decay and filter_bias_and_bn:
     if filter_bias_and_bn:

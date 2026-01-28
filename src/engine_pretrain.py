@@ -1,14 +1,16 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
+"""预训练训练循环（FCMAE / Masked AutoEncoder）。
 
-# All rights reserved.
+这个文件只做一件事：定义 `train_one_epoch`。
+- `main_pretrain.py` 会构建 dataloader / optimizer / scaler 后调用它。
+- 预训练的 loss 来自 FCMAE 的重建误差（只在 mask 的 patch 上计算）。
 
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-
+注意：这里的 `labels` 在预训练阶段并不参与分类，只是为了兼容 `ImageFolder` 的返回值。
+"""
 
 import math
 import sys
 from typing import Iterable
+
 
 import torch
 
@@ -19,6 +21,18 @@ def train_one_epoch(model: torch.nn.Module,
                     device: torch.device, epoch: int, loss_scaler,
                     log_writer=None,
                     args=None):
+    """预训练阶段训练一个 epoch（FCMAE）。
+
+    这里的训练和监督分类不同：
+    - `data_loader` 来自 `ImageFolder`，会产出 `(samples, labels)`，但 `labels` 在自监督中不参与 loss。
+    - loss 由 `model(samples, labels, mask_ratio=...)` 返回的重建误差决定（仅 mask 区域）。
+    - 学习率采用 **iteration 级别** 的 cosine schedule（见 `utils.adjust_learning_rate`）。
+    - 支持 `update_freq` 梯度累积；每累积完成一次会清理一次 CUDA cache（降低稀疏算子碎片）。
+
+    Returns:
+        dict: 统计信息（loss、lr）。
+    """
+
     model.train(True)
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
