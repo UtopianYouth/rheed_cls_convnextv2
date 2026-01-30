@@ -123,7 +123,7 @@ class MetricLogger(object):
         self.meters = defaultdict(SmoothedValue)
         self.delimiter = delimiter
 
-    def update(self, kwargs):
+    def update(self, **kwargs):
         for k, v in kwargs.items():
             if v is None:
                 continue
@@ -213,7 +213,7 @@ class TensorboardLogger(object):
         else:
             self.step += 1
 
-    def update(self, head='scalar', step=None, kwargs):
+    def update(self, head='scalar', step=None, **kwargs):
         for k, v in kwargs.items():
             if v is None:
                 continue
@@ -290,10 +290,10 @@ def setup_for_distributed(is_master):
     import builtins as __builtin__
     builtin_print = __builtin__.print
 
-    def print(*args, kwargs):
+    def print(*args, **kwargs):
         force = kwargs.pop('force', False)
         if is_master or force:
-            builtin_print(*args, kwargs)
+            builtin_print(*args, **kwargs)
 
     __builtin__.print = print
 
@@ -322,9 +322,9 @@ def is_main_process():
     return get_rank() == 0
 
 
-def save_on_master(*args, kwargs):
+def save_on_master(*args, **kwargs):
     if is_main_process():
-        torch.save(*args, kwargs)
+        torch.save(*args, **kwargs)
 
 def init_distributed_mode(args):
     """初始化分布式训练 (DDP) 运行环境。
@@ -371,10 +371,11 @@ def init_distributed_mode(args):
     args.distributed = True
 
     torch.cuda.set_device(args.gpu)
-    args.dist_backend = 'nccl'
-    print('| distributed init (rank {}): {}, gpu {}'.format(
-        args.rank, args.dist_url, args.gpu), flush=True)
+    args.dist_backend = getattr(args, 'dist_backend', 'nccl')
+    print('| distributed init (rank {}): {}, gpu {}, backend {}'.format(
+        args.rank, args.dist_url, args.gpu, args.dist_backend), flush=True)
     torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+
                                          world_size=args.world_size, rank=args.rank)
     torch.distributed.barrier()
     setup_for_distributed(args.rank == 0)

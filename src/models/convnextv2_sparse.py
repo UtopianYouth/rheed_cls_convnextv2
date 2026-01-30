@@ -29,10 +29,18 @@ from src.models.utils import (
 )
 from MinkowskiEngine import (
     MinkowskiConvolution,
-    MinkowskiDepthwiseConvolution,
     MinkowskiLinear,
     MinkowskiGELU
 )
+
+# MinkowskiEngine API compatibility:
+# - Some builds expose depthwise conv as `MinkowskiChannelwiseConvolution` (ME==0.5.4)
+# - Some expose it as `MinkowskiDepthwiseConvolution`
+try:
+    from MinkowskiEngine import MinkowskiDepthwiseConvolution  # type: ignore
+except Exception:
+    from MinkowskiEngine import MinkowskiChannelwiseConvolution as MinkowskiDepthwiseConvolution  # type: ignore
+
 from MinkowskiOps import (
     to_sparse,
 )

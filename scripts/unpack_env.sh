@@ -9,6 +9,10 @@ ENV_FILE="$PROJECT_ROOT/rheed_cls_gpu.tar"
 [ ! -f "$ENV_FILE" ] && echo "Error: $ENV_FILE not found" && exit 1
 
 echo "Unpacking conda environment..."
+if [ -d "$TARGET_PATH" ]; then
+    echo "Existing env found, removing: $TARGET_PATH"
+    rm -rf "$TARGET_PATH"
+fi
 mkdir -p "$TARGET_PATH"
 tar -xf "$ENV_FILE" -C "$TARGET_PATH"
 

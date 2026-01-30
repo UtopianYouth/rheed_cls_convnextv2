@@ -151,3 +151,21 @@ rheed_cls_convnextv2/
   year={2023}
 }
 ```
+
+
+请你帮我分析我的src源代码中convnextv2的预训练和微调的代码结构，我目前正在使用convnextv2深度学习框架完成我的硕士毕业论文rheed图像分类任务，我的数据集在data_rheed目录中；现在我所拥有的基础开发环境如下：
+
+1. 在我本机开发环境中，是仅有cpu的Ubuntu20.04，我在本机完成代码和脚本等的编写，编写完成之后，我会通过我的脚本将源代码、数据集和conda虚拟环境上传到4卡rtx4090的离线服务器中，在我的服务器中完成模型的预训练和微调复现工作；
+
+2. 在离线服务器中，由于我的服务器无法连接外部网络，所以我得在我的开发环境下，提前安装好代码复现所需要的所有依赖，然后运行我的conda虚拟环境打包脚本，将其打包之后上传到服务器中，最后在服务器解包，完成conda虚拟环境的迁移；
+
+3. 基于上述两点，我希望你帮我详细分析src目录下的源码，这里包括了convnextv2的预训练和微调代码，基于代码所需要的运行环境，协助我完成在本机创建一个新的conda虚拟环境，然后安装必要的第三方库，如非必要，尽量所有的第三方库都使用conda install的方式安装，安装第三方库成功后，我会自己进行打包；
+
+4. 注意：安装第三方库一定要全，且我是在离线4卡rtx 4090服务器中运行我的预训练和微调代码，我的服务器cuda信息如下：
+(base) omnisky@omnisky-AS-4124GS-TNR:~$ nvcc --version
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2025 NVIDIA Corporation
+Built on Wed_Jan_15_19:20:09_PST_2025
+Cuda compilation tools, release 12.8, V12.8.61
+Build cuda_12.8.r12.8/compiler.35404655_0
+(base) omnisky@omnisky-AS-4124GS-TNR:~$ conda env list
