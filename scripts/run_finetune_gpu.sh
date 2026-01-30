@@ -24,8 +24,8 @@ fi
 
 # 默认参数
 OUTPUT_DIR="finetune_rheed_$(date +%Y%m%d_%H%M%S)"
-BATCH_SIZE=32
-EPOCHS=100
+BATCH_SIZE=16
+EPOCHS=80
 BASE_LR=5e-4
 
 # 类别权重
@@ -49,7 +49,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
     torchrun --standalone \
       --nproc_per_node=$NUM_GPUS \
       -m src.main_finetune \
-      --model convnextv2_tiny \
+      --model convnextv2_base \
       --batch_size $BATCH_SIZE \
       --epochs $EPOCHS \
       --blr $BASE_LR \
@@ -61,7 +61,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
       --data_path $DATA_PATH \
       --eval_data_path $VAL_PATH \
       --nb_classes 2 \
-      --input_size 224 \
+      --input_size 384 \
       --drop_path 0.1 \
       --mixup 0.8 \
       --cutmix 1.0 \
@@ -81,7 +81,7 @@ if [ "$NUM_GPUS" -gt 1 ]; then
       --save_ckpt_num 3 \
       --num_workers 8 \
       --device cuda \
-      --use_amp false \
+      --use_amp true \
       --pin_mem true \
       --imagenet_default_mean_and_std true
 else
@@ -91,7 +91,7 @@ else
     fi
 
     python -m src.main_finetune \
-      --model convnextv2_tiny \
+      --model convnextv2_base \
       --batch_size $BATCH_SIZE \
       --epochs $EPOCHS \
       --blr $BASE_LR \
@@ -103,7 +103,7 @@ else
       --data_path $DATA_PATH \
       --eval_data_path $VAL_PATH \
       --nb_classes 2 \
-      --input_size 224 \
+      --input_size 384 \
       --drop_path 0.1 \
       --mixup 0.8 \
       --cutmix 1.0 \
@@ -123,7 +123,7 @@ else
       --save_ckpt_num 3 \
       --num_workers 8 \
       --device $DEVICE \
-      --use_amp false \
+      --use_amp true \
       --pin_mem true \
       --imagenet_default_mean_and_std true
 fi

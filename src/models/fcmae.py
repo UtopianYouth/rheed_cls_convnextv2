@@ -9,10 +9,10 @@
 """FCMAE（Fully Convolutional Masked AutoEncoder）预训练模型。
 
 整体结构：
-- **mask 生成**：按 patch 随机采样 mask（keep=0, mask=1）
-- **encoder**：`SparseConvNeXtV2`，只对 keep 的位置做稀疏计算（依赖 MinkowskiEngine）
-- **decoder**：把 encoder 输出投影到 decoder_embed_dim，填充 mask_token 后做少量 Block
-- **pred**：预测每个 patch 的像素（重建目标），loss 为 mask patch 上的 MSE
+- mask 生成：按 patch 随机采样 mask（keep=0, mask=1）
+- encoder：`SparseConvNeXtV2`，只对 keep 的位置做稀疏计算（依赖 MinkowskiEngine）
+- decoder：把 encoder 输出投影到 decoder_embed_dim，填充 mask_token 后做少量 Block
+- pred：预测每个 patch 的像素（重建目标），loss 为 mask patch 上的 MSE
 
 在 `main_pretrain.py` 中：
 - `loss, pred, mask = model(samples, labels, mask_ratio=...)`
@@ -23,11 +23,18 @@ import torch
 import torch.nn as nn
 
 from MinkowskiEngine import (
-
     MinkowskiConvolution,
-    MinkowskiDepthwiseConvolution,
     MinkowskiLinear,
 )
+
+# MinkowskiEngine API compatibility:
+# - Some builds expose depthwise conv as `MinkowskiChannelwiseConvolution` (ME==0.5.4)
+# - Some expose it as `MinkowskiDepthwiseConvolution`
+try:
+    from MinkowskiEngine import MinkowskiDepthwiseConvolution  # type: ignore
+except Exception:
+    from MinkowskiEngine import MinkowskiChannelwiseConvolution as MinkowskiDepthwiseConvolution  # type: ignore
+
 
 from timm.models.layers import trunc_normal_
 from src.models.convnextv2_sparse import SparseConvNeXtV2

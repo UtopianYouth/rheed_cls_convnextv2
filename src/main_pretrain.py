@@ -20,7 +20,9 @@ import numpy as np
 import time
 import json
 import os
+import faulthandler
 from pathlib import Path
+
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -31,7 +33,34 @@ import timm
 # The original upstream code pinned timm==0.3.2. For local experimentation, we allow newer versions.
 if getattr(timm, "__version__", "") != "0.3.2":
     print(f"Warning: this repo was originally tested with timm==0.3.2, current={timm.__version__}")
+
+# timm API compatibility:
+# - old: timm.optim.optim_factory.add_weight_decay
+# - new: timm.optim.optim_factory.param_groups_weight_decay
 import timm.optim.optim_factory as optim_factory
+
+
+def _timm_param_groups(model, weight_decay: float):
+    if hasattr(optim_factory, "param_groups_weight_decay"):
+        return optim_factory.param_groups_weight_decay(model, weight_decay=weight_decay)
+    if hasattr(optim_factory, "add_weight_decay"):
+        return optim_factory.add_weight_decay(model, weight_decay)
+
+    # final fallback: minimal local implementation
+    decay = []
+    no_decay = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if len(param.shape) == 1 or name.endswith(".bias"):
+            no_decay.append(param)
+        else:
+            decay.append(param)
+    return [
+        {"params": no_decay, "weight_decay": 0.0},
+        {"params": decay, "weight_decay": weight_decay},
+    ]
+
 
 from src.engine_pretrain import train_one_epoch
 from src.models import fcmae
@@ -127,7 +156,10 @@ def get_args_parser():
     parser.add_argument('--dist_on_itp', type=str2bool, default=False)
     parser.add_argument('--dist_url', default='env://',
                         help='url used to set up distributed training')
+    parser.add_argument('--dist_backend', default='nccl', choices=['nccl', 'gloo'],
+                        help='Distributed backend (default: nccl). Use gloo to debug NCCL issues.')
     return parser
+
 
 def main(args):
     """预训练主函数.
@@ -139,11 +171,44 @@ def main(args):
     4) 构建模型 (FCMAE) 并包 DDP (可选) 
     5) 构建 optimizer + AMP scaler, 支持自动恢复 (resume/auto_resume) 
     6) 循环epoch: 调用 `engine_pretrain.train_one_epoch` + 保存checkpoint
+
+    额外说明：如果你在多卡上遇到 SIGSEGV（native 崩溃），本函数会为每个 rank
+    生成一个 `debug_rank*.log`，并启用 `faulthandler` 尝试打印 Python 栈，方便定位卡在哪一步。
     """
+
+    # per-rank debug log (helps diagnose SIGSEGV / native crashes)
+    rank = os.environ.get("RANK", "0")
+    local_rank = os.environ.get("LOCAL_RANK", "")
+    debug_fp = None
+    debug_path = None
+
+    try:
+        if args.output_dir:
+            os.makedirs(args.output_dir, exist_ok=True)
+            debug_path = os.path.join(args.output_dir, f"debug_rank{rank}.log")
+        else:
+            debug_path = f"debug_rank{rank}.log"
+        debug_fp = open(debug_path, "a", buffering=1, encoding="utf-8")
+        faulthandler.enable(file=debug_fp, all_threads=True)
+    except Exception:
+        debug_fp = None
+
+    def _dbg(msg: str):
+        if debug_fp is None:
+            return
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        debug_fp.write(f"[{ts}] rank={rank} local_rank={local_rank} {msg}\n")
+
+    _dbg("enter main")
+    _dbg(f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES','')} OMP_NUM_THREADS={os.environ.get('OMP_NUM_THREADS','')} MKL_NUM_THREADS={os.environ.get('MKL_NUM_THREADS','')}")
+
     utils.init_distributed_mode(args)
+    _dbg("after init_distributed_mode")
 
     print(args)
     device = torch.device(args.device)
+    _dbg(f"device={device}")
+
 
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
@@ -217,7 +282,7 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
 
-    param_groups = optim_factory.add_weight_decay(model_without_ddp, args.weight_decay)
+    param_groups = _timm_param_groups(model_without_ddp, args.weight_decay)
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
     print(optimizer)
     loss_scaler = NativeScaler()

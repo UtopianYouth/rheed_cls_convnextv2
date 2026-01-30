@@ -1,0 +1,5 @@
+# This project prefers conda-installed dependencies.
+# Keep this file only for packages that must be installed via pip.
+
+# Optional experiment tracking (not required for training)
+# wandb

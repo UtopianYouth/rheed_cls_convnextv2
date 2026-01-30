@@ -1,0 +1,51 @@
+name: rheed_cls_gpu
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  # Python
+  - python=3.10
+  - pip
+
+  # Core DL stack (works on RTX4090; driver 12.8 is compatible)
+  # Pin CUDA builds explicitly to avoid accidentally pulling CPU-only pytorch.
+  - pytorch=2.1.*=*cuda*
+  - torchvision=0.16.*=*cu118*
+  - torchaudio=2.1.*=*cu118*
+  - pytorch-cuda=11.8
+  - mkl
+  - requests
+
+  # Training code dependencies
+  # PyTorch 2.1 + many compiled extensions are not NumPy 2.x ready; pin to NumPy 1.x.
+  - numpy=1.26.*
+  - pillow
+  - pyyaml
+  - timm
+  - tensorboardx
+
+  # Build toolchain (needed to compile MinkowskiEngine from source)
+  - ninja
+  - cmake
+  - make
+  - pybind11
+  - setuptools
+  - wheel
+
+  # BLAS for MinkowskiEngine CPU ops
+  # PyTorch CUDA builds in conda typically depend on MKL (blas=mkl), so using MKL here reduces solver conflicts.
+  - mkl-devel
+
+  # CUDA toolkit pieces for compiling custom CUDA extensions inside the env
+  # Thrust headers live in CUDA CCCL in recent toolkits; required by MinkowskiEngine.
+  - cuda-cccl=11.8
+  - cuda-nvcc=11.8
+  - cuda-cudart-dev=11.8
+  # CUDA headers (e.g., curand.h) may live under `$CONDA_PREFIX/targets/x86_64-linux/include`.
+  # When building MinkowskiEngine, export CPATH to include that directory.
+  - cuda-libraries-dev=11.8
+
+  # Optional: useful debugging
+  - ipython
