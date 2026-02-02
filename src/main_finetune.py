@@ -27,7 +27,11 @@ from pathlib import Path
 import torch
 import torch.backends.cudnn as cudnn
 
-from timm.models.layers import trunc_normal_
+try:
+    from timm.layers import trunc_normal_
+except Exception:
+    from timm.models.layers import trunc_normal_
+
 from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 from timm.utils import ModelEma
@@ -389,7 +393,8 @@ def main(args):
         args, model_without_ddp, skip_list=None,
         get_num_layer=assigner.get_layer_id if assigner is not None else None, 
         get_layer_scale=assigner.get_scale if assigner is not None else None)
-    loss_scaler = NativeScaler()
+    loss_scaler = NativeScaler(enabled=args.use_amp)
+
 
     if mixup_fn is not None:
         # smoothing is handled with mixup label transform

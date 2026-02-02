@@ -459,15 +459,20 @@ class NativeScalerWithGradNormCount:
     - 在 AMP 模式下完成: scale loss → backward → unscale → clip (可选) → optimizer.step → scaler.update
     - 同时返回梯度范数，便于日志记录
 
-    在本仓库中: 
-    - 预训练与微调都会创建并传入 (即使 `use_amp=False`，也可能只是作为占位) 。
+    说明：
+    - `enabled` 允许你显式控制是否启用 GradScaler。
+    - 对于本仓库的预训练（包含 MinkowskiEngine 稀疏算子），通常建议先 **关闭** AMP/GradScaler
+      来排除数值不稳定来源；微调阶段再按需开启 AMP。
     """
 
     state_dict_key = "amp_scaler"
 
 
-    def __init__(self):
-        self._scaler = torch.cuda.amp.GradScaler(enabled=torch.cuda.is_available())
+    def __init__(self, enabled: bool | None = None):
+        if enabled is None:
+            enabled = torch.cuda.is_available()
+        self._scaler = torch.cuda.amp.GradScaler(enabled=enabled)
+
 
 
     def __call__(self, loss, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):

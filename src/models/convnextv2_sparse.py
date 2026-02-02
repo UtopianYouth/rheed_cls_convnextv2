@@ -16,9 +16,16 @@
 - `fcmae.FCMAE` 内部会构建 `SparseConvNeXtV2` 作为 encoder。
 """
 
+import os
+
 import torch
 import torch.nn as nn
-from timm.models.layers import trunc_normal_
+try:
+    from timm.layers import trunc_normal_
+except Exception:
+    from timm.models.layers import trunc_normal_
+
+
 
 
 from src.models.utils import (
@@ -94,7 +101,9 @@ class SparseConvNeXtV2(nn.Module):
                  D=3):
         super().__init__()
         self.depths = depths
+        self.dims = dims
         self.num_classes = num_classes
+
         self.downsample_layers = nn.ModuleList() # stem and 3 intermediate downsampling conv layers
         stem = nn.Sequential(
             nn.Conv2d(in_chans, dims[0], kernel_size=4, stride=4),
@@ -173,13 +182,41 @@ class SparseConvNeXtV2(nn.Module):
         # patch embedding
         x = self.downsample_layers[0](x)
         x *= (1.-mask)
-        
+
         # sparse encoding
-        x = to_sparse(x)
+        x_dense = x
+        x = to_sparse(x_dense)
+
+        # Guard: empty SparseTensor can trigger MinkowskiEngine native SIGSEGV.
+        def _is_empty_sparse(st):
+            try:
+                return getattr(st, 'F', None) is None or st.F.numel() == 0 or st.F.shape[0] == 0
+            except Exception:
+                return False
+
+        def _fallback_zero():
+            # x_dense: (N, C0, H0, W0) where H0/W0 are stem resolution (e.g., 96x96 for 384 input)
+            N = x_dense.shape[0]
+            H0, W0 = int(x_dense.shape[2]), int(x_dense.shape[3])
+            # after 3 stride-2 downsamples: /8
+            out_h = max(1, H0 // 8)
+            out_w = max(1, W0 // 8)
+            if os.environ.get('RANK', '0') == '0':
+                print(f"[WARN] empty SparseTensor encountered; returning zeros to avoid ME crash (stem={H0}x{W0} -> out={out_h}x{out_w}).")
+            return x_dense.new_zeros((N, self.dims[-1], out_h, out_w))
+
+        if _is_empty_sparse(x):
+            return _fallback_zero()
+
         for i in range(4):
             x = self.downsample_layers[i](x) if i > 0 else x
+            if _is_empty_sparse(x):
+                return _fallback_zero()
             x = self.stages[i](x)
-        
+            if _is_empty_sparse(x):
+                return _fallback_zero()
+
         # densify
         x = x.dense()[0]
         return x
+

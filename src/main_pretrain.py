@@ -22,6 +22,7 @@ import json
 import os
 import faulthandler
 from pathlib import Path
+import warnings
 
 
 import torch
@@ -29,15 +30,33 @@ import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
+# 屏蔽 timm 1.x 的警告信息
+warnings.filterwarnings(
+    "ignore",
+    message=r"Importing from timm\.optim\.optim_factory is deprecated, please import via timm\.optim",
+    category=FutureWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"Importing from timm\.models\.layers is deprecated, please import via timm\.layers",
+    category=FutureWarning,
+)
+
 import timm
-# The original upstream code pinned timm==0.3.2. For local experimentation, we allow newer versions.
-if getattr(timm, "__version__", "") != "0.3.2":
+
+# 屏蔽 timm 1.x 的警告信息
+if os.environ.get("RANK", "0") == "0" and getattr(timm, "__version__", "") != "0.3.2":
     print(f"Warning: this repo was originally tested with timm==0.3.2, current={timm.__version__}")
 
 # timm API compatibility:
 # - old: timm.optim.optim_factory.add_weight_decay
 # - new: timm.optim.optim_factory.param_groups_weight_decay
-import timm.optim.optim_factory as optim_factory
+try:
+    from timm.optim import optim_factory as optim_factory
+except Exception:
+    import timm.optim.optim_factory as optim_factory
+
+
 
 
 def _timm_param_groups(model, weight_decay: float):
@@ -78,6 +97,87 @@ def _to_rgb(img):
         return img
 
 
+def _build_image_loader(image_backend: str):
+    """为 ImageFolder 构建 loader。
+
+    背景：你现在遇到的是 DataLoader worker 的 SIGSEGV（native 崩溃）。
+    在一些环境里，PIL/libtiff 在多进程（尤其 fork）下不够稳定。
+
+    - image_backend=pil: 使用 torchvision 默认 loader（PIL）
+    - image_backend=tifffile: 对 .tif/.tiff 使用 tifffile 解码，然后转成 RGB PIL.Image
+    - image_backend=auto: 优先 tifffile，失败则回退 pil
+    """
+
+    from torchvision.datasets.folder import default_loader
+
+    if image_backend == 'pil':
+        return default_loader
+
+    if image_backend == 'auto':
+        try:
+            import tifffile  # noqa: F401
+            return _build_image_loader('tifffile')
+        except Exception:
+            return default_loader
+
+    if image_backend != 'tifffile':
+        return default_loader
+
+    def _loader(path: str):
+        import numpy as np
+        from PIL import Image
+        import tifffile
+
+        # tifffile.imread 返回 numpy array
+        arr = tifffile.imread(path)
+
+        # 统一到 HWC, uint8, 3 通道
+        if arr.ndim == 2:
+            # grayscale
+            if arr.dtype == np.uint16:
+                arr = (arr / 256).astype(np.uint8)
+            elif arr.dtype != np.uint8:
+                arr = np.clip(arr, 0, 255).astype(np.uint8)
+            arr = np.stack([arr, arr, arr], axis=-1)
+        elif arr.ndim == 3:
+            # CHW -> HWC
+            if arr.shape[0] in (3, 4) and arr.shape[-1] not in (3, 4):
+                arr = np.transpose(arr, (1, 2, 0))
+            # RGBA -> RGB
+            if arr.shape[-1] == 4:
+                arr = arr[..., :3]
+            if arr.dtype == np.uint16:
+                arr = (arr / 256).astype(np.uint8)
+            elif arr.dtype != np.uint8:
+                arr = np.clip(arr, 0, 255).astype(np.uint8)
+        else:
+            raise ValueError(f"Unsupported TIFF array shape: {arr.shape} for {path}")
+
+        return Image.fromarray(arr, mode='RGB')
+
+    return _loader
+
+
+class ImageFolderWithPath(datasets.ImageFolder):
+    """ImageFolder but also returns the file path.
+
+    目的：当出现 NaN/Inf（尤其是 data augmentation/解码偶发问题）时，能精确定位到具体文件。
+    """
+
+    def __init__(self, *args, loader=None, **kwargs):
+        # Use custom loader if provided
+        if loader is not None:
+            kwargs['loader'] = loader
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, index):
+        sample, target = super().__getitem__(index)
+        path, _ = self.samples[index]
+        return sample, target, path
+
+
+
+
 def get_args_parser():
     """构建预训练阶段的命令行参数.
 
@@ -115,8 +215,11 @@ def get_args_parser():
     # Optimizer parameters
     parser.add_argument('--weight_decay', type=float, default=0.05,
                         help='weight decay (default: 0.05)')
+    parser.add_argument('--clip_grad', type=float, default=3.0,
+                        help='Clip gradient norm (default: 3.0). Helps prevent NaN/Inf.')
     parser.add_argument('--lr', type=float, default=None, metavar='LR',
                         help='learning rate (absolute lr)')
+
     parser.add_argument('--blr', type=float, default=1.5e-4, metavar='LR',
                         help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
     parser.add_argument('--min_lr', type=float, default=0., metavar='LR',
@@ -145,6 +248,28 @@ def get_args_parser():
     parser.add_argument('--num_workers', default=10, type=int)
     parser.add_argument('--pin_mem', type=str2bool, default=True,
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
+
+    parser.add_argument('--dataloader_mp_context', default='none', choices=['none', 'fork', 'spawn', 'forkserver'],
+                        help="DataLoader multiprocessing start method. 'spawn' is often more stable for TIFF/PIL. "
+                             "Use 'none' to let PyTorch pick the default.")
+
+    parser.add_argument('--image_backend', default='auto', choices=['auto', 'pil', 'tifffile'],
+                        help="Image decode backend for ImageFolder. 'tifffile' can avoid PIL/libtiff worker SIGSEGV on some systems.")
+
+    parser.add_argument('--empty_cache_freq', type=int, default=0,
+                        help='If >0, call torch.cuda.empty_cache() every N optimizer steps (after synchronize). '
+                             '0 disables (default).')
+
+    parser.add_argument('--bad_sample_action', default='error', choices=['error', 'zero'],
+                        help="What to do when a sample becomes NaN/Inf on CPU after transforms: "
+                             "'error' (default) stops with paths; 'zero' replaces NaN/Inf with 0 and continues.")
+
+    parser.add_argument('--use_amp', type=str2bool, default=False,
+                        help='Enable GradScaler (AMP-related). Default false for stability with sparse ops.')
+
+
+
+
     
     # Evaluation parameters
     parser.add_argument('--crop_pct', type=float, default=None)
@@ -225,7 +350,14 @@ def main(args):
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
+    loader = _build_image_loader(getattr(args, 'image_backend', 'auto'))
+    _dbg(f"image_backend={getattr(args, 'image_backend', 'auto')}")
+
+    dataset_train = ImageFolderWithPath(
+        os.path.join(args.data_path, 'train'),
+        transform=transform_train,
+        loader=loader,
+    )
     print(dataset_train)
 
     num_tasks = utils.get_world_size()
@@ -243,13 +375,20 @@ def main(args):
     else:
         log_writer = None
 
+    dl_kwargs = {}
+    if getattr(args, 'dataloader_mp_context', 'none') != 'none' and args.num_workers > 0:
+        dl_kwargs['multiprocessing_context'] = args.dataloader_mp_context
+        _dbg(f"dataloader_mp_context={args.dataloader_mp_context}")
+
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train, sampler=sampler_train,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
+        **dl_kwargs,
     )
+
 
     # define the model
     model = fcmae.__dict__[args.model](
@@ -279,13 +418,16 @@ def main(args):
     print("effective batch size: %d" % eff_batch_size)
 
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        # find_unused_parameters=True 会引入额外的 autograd traversal，且对稀疏算子更不稳定；这里默认关闭。
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=False)
         model_without_ddp = model.module
+
 
     param_groups = _timm_param_groups(model_without_ddp, args.weight_decay)
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
     print(optimizer)
-    loss_scaler = NativeScaler()
+    loss_scaler = NativeScaler(enabled=args.use_amp)
+
 
     utils.auto_load_model(
         args=args, model=model, model_without_ddp=model_without_ddp,

@@ -41,8 +41,13 @@ if command -v nvidia-smi &> /dev/null; then
     nvidia-smi --query-gpu=index,name,memory.used,memory.total,utilization.gpu --format=csv
     echo "------------------------------------------------"
 
-    read -p "GPU IDs (多个用逗号分隔, 默认: 0): " gpu_ids
-    gpu_ids=${gpu_ids:-"0"}
+    if [ -n "${GPU_IDS:-}" ]; then
+        gpu_ids="$GPU_IDS"
+        echo "GPU_IDS from env: $gpu_ids"
+    else
+        read -p "GPU IDs (多个用逗号分隔, 默认: 0): " gpu_ids
+        gpu_ids=${gpu_ids:-"0"}
+    fi
 
     export CUDA_VISIBLE_DEVICES=$gpu_ids
     IFS=',' read -ra GPU_ARRAY <<< "$gpu_ids"
@@ -61,7 +66,8 @@ EPOCHS=150
 BASE_LR=1.5e-4
 MASK_RATIO=0.6
 INPUT_SIZE=384
-NUM_WORKERS=8
+# TIFF + 多进程下部分环境会出现 DataLoader worker SIGSEGV；先用更稳的配置
+NUM_WORKERS=2
 
 # 数据根目录 (其下需要有 train/)
 DATA_PATH="data_rheed"
@@ -78,6 +84,7 @@ auto_args=(
   --mask_ratio $MASK_RATIO
   --input_size $INPUT_SIZE
   --weight_decay 0.05
+  --clip_grad 3.0
   --warmup_epochs 10
   --min_lr 0.0
   --data_path $DATA_PATH
@@ -88,7 +95,17 @@ auto_args=(
   --save_ckpt_freq 10
   --save_ckpt_num 3
   --num_workers $NUM_WORKERS
-  --pin_mem true
+  --pin_mem false
+  # DataLoader 多进程启动方式：spawn 会为每个 worker 启动全新 Python 进程（不继承父进程内存）。
+  # 相比默认的fork，它在 TIFF/PIL/libtiff 这类带native库的解码场景里通常更稳定，可减少 worker SIGSEGV。
+  # 可选值：none/fork/spawn/forkserver（我们在 `src/main_pretrain.py` 里做了支持）
+  --dataloader_mp_context spawn
+  # 图像解码后端：auto 会优先用 tifffile 读取 .tif/.tiff（更稳），失败再回退到 PIL 默认 loader。
+  # 可选值：auto/pil/tifffile
+  --image_backend auto
+  --bad_sample_action zero
+  --use_amp false
+  --empty_cache_freq 20
   --dist_backend $DIST_BACKEND
 )
 

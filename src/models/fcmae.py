@@ -36,7 +36,11 @@ except Exception:
     from MinkowskiEngine import MinkowskiChannelwiseConvolution as MinkowskiDepthwiseConvolution  # type: ignore
 
 
-from timm.models.layers import trunc_normal_
+try:
+    from timm.layers import trunc_normal_
+except Exception:
+    from timm.models.layers import trunc_normal_
+
 from src.models.convnextv2_sparse import SparseConvNeXtV2
 from src.models.convnextv2 import Block
 

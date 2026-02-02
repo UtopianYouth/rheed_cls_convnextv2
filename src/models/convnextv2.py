@@ -19,7 +19,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from timm.models.layers import trunc_normal_, DropPath
+try:
+    from timm.layers import trunc_normal_, DropPath
+except Exception:
+    from timm.models.layers import trunc_normal_, DropPath
+
 from src.models.utils import LayerNorm, GRN
 
 class Block(nn.Module):
