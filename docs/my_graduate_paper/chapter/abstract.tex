@@ -1,0 +1,39 @@
+\begin{abstractCN}
+\setlength{\baselineskip}{23pt} %设置行距23磅
+
+
+随着半导体材料制备技术的不断演进，分子束外延（Molecular Beam Epitaxy, MBE）技术已成为实现原子级精度薄膜生长的关键手段。反射式高能电子衍射（Reflection High-Energy Electron Diffraction, RHEED）作为MBE过程中主要的实时监测工具，其图像中蕴含大量反映材料表面结构变化的重要信息。传统RHEED图像分析方法高度依赖研究人员的经验判断，通过人工观RHEED衍射条纹形态或分析RHEED强度振荡曲线周期来推断薄膜生长参数，存在主观性强、响应滞后、难以处理高维时序数据等问题，已难以满足当前半导体器件制备对工艺精细化控制和实时反馈的需求。近年来，MBE设备数字化水平的提升和高速成像技术的发展使得单次薄膜生长实验可产生大量高分辨率RHEED图像与视频序列，为数据驱动的RHEED图像智能分析提供了基础。为此，本文围绕RHEED图像的智能分析需求，提出一种基于多任务深度学习的RHEED图像分析方法。该方法以共享骨干网络为核心，通过多任务协同学习机制，联合完成RHEED图像分类、衍射条纹与斑点目标检测和RHEED强度震荡曲线时序预测三项任务。本文的主要贡献包括：
+
+（1）在图像分类任务中，本文引入基于ConvNeXt V2的自监督学习框架，结合全卷积掩码自编码器（Fully Convolutional Masked Autoencoder，FCMAE）与改进的全局响应归一化（Global Response Normalization，GRN）机制，在无需大规模人工标注数据的情况下学习RHEED图像的全局语义特征，有效增强模型在高噪声、局部遮挡和少样本场景下的特征提取能力，实现对衬底表面生长阶段和重构状态的分类。
+
+（2）在目标检测任务中，针对RHEED图像中衍射条纹和斑点数量随薄膜生长过程动态变化、尺度差异显著且易受遮挡干扰等特点，本文采用基于扩散模型的DiffusionDet方法，将目标检测任务建模为随机噪声边界框的逐步去噪与优化过程，避免传统锚框机制对目标形态的先验假设偏差。通过多步迭代优化边界框位置与尺寸，该方法能自适应地完成RHEED条纹与斑点的空间定位，在复杂生长阶段和遮挡条件下保持较高的检测鲁棒性。
+
+（3）在时序预测任务中，针对RHEED强度震荡曲线同时包含快速局部波动与缓慢全局演变两类物理特征，本文引入Pyraformer多尺度时序建模方法，通过金字塔结构与跨尺度注意力机制，对RHEED强度震荡曲线进行长序列预测建模。进一步地，本文将图像分类任务输出的全局语义特征以及目标检测任务生成的空间分布信息作为时序预测的先验约束，实现空间特征与时间特征的协同融合，提升薄膜生长动态演化过程的预测精度。
+
+本文对推动半导体材料生长过程从经验驱动向数据驱动与智能调控转变具有重要的理论意义和工程应用价值。
+\end{abstractCN}
+
+
+\begin{keywordCN}
+RHEED，多任务学习，ConvNeXt V2，DiffusionDet，Pyraformer
+\end{keywordCN}
+
+\begin{abstractEN}
+
+\setlength{\baselineskip}{23pt} %设置行距23磅
+With the continuous advancement of semiconductor material fabrication technologies, Molecular Beam Epitaxy (MBE) has become a key technique for achieving atomic-scale precision in thin-film growth. Reflection High-Energy Electron Diffraction (RHEED), as the primary real-time monitoring tool in MBE processes, contains rich image information that reflects dynamic variations in material surface structures. Conventional RHEED image analysis methods rely heavily on expert experience, where thin-film growth parameters are inferred through manual observation of diffraction stripe morphologies or analysis of the periodicity of RHEED intensity oscillation curves. These approaches suffer from strong subjectivity, delayed response, and limited capability in handling high-dimensional temporal data, and can no longer satisfy the growing demand for fine-grained process control and real-time feedback in modern semiconductor device fabrication. In recent years, the increasing digitalization of MBE systems and advances in high-speed imaging technologies have enabled a single thin-film growth experiment to generate large volumes of high-resolution RHEED images and video sequences, providing a solid foundation for data-driven intelligent analysis of RHEED images. Motivated by this, this work proposes a multi-task deep learning–based RHEED image analysis method to address the intelligent analysis requirements of RHEED data. The proposed approach is built upon a shared backbone network and employs a multi-task collaborative learning mechanism to jointly accomplish RHEED image classification, diffraction stripe and spot detection, and time-series prediction of RHEED intensity oscillation curves. The main contributions of this work are summarized as follows:
+
+(1) Image Classification Task: A self-supervised learning framework based on ConvNeXt V2 is introduced for RHEED image classification. By integrating a Fully Convolutional Masked Autoencoder (FCMAE) with an improved Global Response Normalization (GRN) mechanism, the proposed method learns global semantic representations of RHEED images without relying on large-scale manually annotated datasets. This design effectively enhances feature extraction robustness under high noise, partial occlusion, and limited labeled data scenarios, enabling accurate classification of substrate surface growth stages and reconstruction states.
+
+(2) Object Detection Task: To address the characteristics of RHEED images, where the number of diffraction stripes and spots varies dynamically during thin-film growth, exhibits significant scale differences, and is prone to occlusion, a diffusion-model-based DiffusionDet approach is adopted. The object detection task is formulated as a progressive denoising and optimization process of randomly initialized noisy bounding boxes, thereby avoiding the prior shape assumptions imposed by traditional anchor-based detection mechanisms. Through multi-step iterative refinement of bounding box positions and scales, the proposed method adaptively localizes RHEED diffraction stripes and spots, maintaining strong detection robustness under complex growth stages and occlusion conditions.
+
+(3) Time-Series Prediction Task: To model RHEED intensity oscillation curves that simultaneously exhibit rapid local fluctuations and slow global evolution, a Pyraformer-based multi-scale temporal modeling method is introduced. By leveraging a pyramidal architecture and cross-scale attention mechanisms, long-horizon forecasting of RHEED intensity oscillation sequences is achieved. Furthermore, global semantic features generated by the image classification task and spatial distribution information produced by the object detection task are incorporated as prior constraints for time-series prediction, enabling coordinated fusion of spatial and temporal features and improving the prediction accuracy of thin-film growth dynamics.
+
+Overall, this work provides important theoretical insights and practical engineering value in promoting the transition of semiconductor material growth processes from experience-driven paradigms toward data-driven and intelligent process control.
+
+\end{abstractEN}
+
+\begin{keywordEN}
+RHEED, multi-task learning, ConvNeXt V2, DiffusionDet, Pyraformer
+\end{keywordEN}
+

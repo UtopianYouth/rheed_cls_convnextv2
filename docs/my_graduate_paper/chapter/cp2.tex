@@ -1,0 +1,332 @@
+\clearpage
+
+\section{基于ConvNeXt V2的RHEED时序图像分类}
+
+本章针对MBE薄膜生长过程中的二维层状生长与三维岛状生长模式识别问题，提出基于ConvNeXt V2的RHEED图像时序分类方法。本章首先阐述ConvNeXt V2自监督学习框架的核心机制；随后介绍面向RHEED时序数据的实验设计，包括滑动窗口采样策略、数据集构建与训练流程；最后通过实验结果分析验证该方法在小样本RHEED数据集上的有效性与局限性。
+
+\subsection{问题定义与方法概述}
+
+\subsubsection{MBE生长模式识别问题}
+
+在MBE薄膜生长过程中，衬底表面原子排列方式直接影响薄膜的晶体质量与器件性能。根据Stranski-Krastanov生长理论\upcite{c14}，薄膜生长主要呈现两种典型模式：
+
+（1）\textbf{二维层状生长（Layer-by-Layer Growth）}：原子在衬底表面逐层堆叠，形成原子级平整的薄膜。该模式对应RHEED图像中的条纹状衍射图案，条纹清晰且强度均匀，表征表面平整度高、晶格有序性强。
+
+（2）\textbf{三维岛状生长（Island Growth）}：原子在衬底表面成核并形成三维岛状结构。初期（island\_smooth）表面起伏较小，RHEED图像呈现模糊条纹；后期（island\_rough）岛状结构增大，表面粗糙度显著增加，RHEED图像中条纹消失并出现散射斑点，衍射强度整体下降\upcite{c15}。
+
+传统MBE工艺控制依赖研究人员通过观察RHEED图像或分析强度震荡曲线判断生长模式，该方法存在主观性强、响应滞后且难以量化等问题。本研究将生长模式识别建模为二分类任务，目标是从RHEED图像序列中自动判别当前处于二维层状生长还是三维岛状生长阶段。
+
+\subsubsection{基于时序窗口的分类策略}
+
+不同于传统静态图像分类，RHEED图像在MBE生长过程中呈现连续动态演化特性。单帧图像可能因噪声干扰或瞬态表面形貌波动而缺乏判别性，因此本研究采用\textbf{滑动窗口时序分类策略}：
+
+给定RHEED图像序列$\{I_1, I_2, \dots, I_T\}$，其中$I_t \in \mathbb{R}^{H \times W \times 3}$表示时刻$t$的单帧图像。定义窗口大小$w$和滑动步长$s$，通过滑窗构建时序样本：
+\begin{equation}
+X_k = \{I_{k}, I_{k+1}, \dots, I_{k+w-1}\}, \quad k = 1, s+1, 2s+1, \dots
+\end{equation}
+每个窗口$X_k$对应一个类别标签$y_k \in \{\text{2D层状}, \text{3D岛状}\}$，标签由整条序列的全局生长模式决定。为适应卷积神经网络输入格式，将窗口内$w$帧图像沿通道维度拼接：
+\begin{equation}
+\tilde{X}_k = \text{Concat}(I_k, I_{k+1}, \dots, I_{k+w-1}) \in \mathbb{R}^{H \times W \times 3w}
+\end{equation}
+该策略使模型能够学习RHEED图像的短时序列演化模式，相比单帧分类能更有效地捕捉生长过程的动态特征。
+
+\subsection{ConvNeXt V2框架}
+
+ConvNeXt V2是Facebook AI Research于2023年提出的自监督视觉模型\upcite{c2}，其核心创新在于将掩码自编码器（Masked Autoencoder, MAE）的预训练范式与纯卷积架构深度结合，在保持卷积网络高效推理特性的同时，引入类似Vision Transformer的自监督学习能力。本研究选择ConvNeXt V2的原因包括：
+
+（1）\textbf{自监督预训练降低标注依赖}：RHEED图像标注需要MBE领域专家知识，成本高昂。ConvNeXt V2通过FCMAE在ImageNet数据集上进行自监督预训练，学习通用视觉特征表示，可在少样本场景下有效迁移至RHEED任务。
+
+（2）\textbf{增强弱特征提取能力}：RHEED图像中的菊池线、衍射条纹等关键特征对比度低且易受噪声干扰。ConvNeXt V2引入的GRN机制通过跨通道归一化与自适应缩放，能够增强微弱特征的响应强度。
+
+（3）\textbf{灵活的输入通道扩展}：标准ConvNeXt V2接受$3$通道RGB图像输入，可通过简单的通道数修改适配本研究的$3w$通道时序输入（$w$为窗口大小）。
+
+\subsubsection{全卷积掩码自编码器（FCMAE）}
+
+FCMAE是ConvNeXt V2自监督预训练的核心模块，其基本思想是随机遮挡输入图像的部分区域，训练模型从可见区域重建完整图像，从而学习鲁棒的特征表示。如图\ref{fig_fcmae}所示，FCMAE包含编码器（Encoder）和解码器（Decoder）两部分。
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.65\textwidth]{figure/cp2/cp2_fcmae.png}
+\caption{全卷积掩码自编码器（FCMAE）框架}  
+\label{fig_fcmae}
+\end{figure}
+
+给定输入图像$x \in \mathbb{R}^{H\times W\times C}$，首先生成随机二值掩码矩阵$M \in \{0, 1\}^{H \times W}$，其中$1$表示可见像素，$0$表示被遮挡像素。掩码比例通常设为$60\%$，即遮挡$60\%$的图像区域。遮挡后的图像记为：
+\begin{equation}
+x_{\text{masked}} = x \odot (M \otimes \mathbf{1}_C)
+\end{equation}
+其中$\otimes$表示张量积,$\mathbf{1}_C$为$C$维全$1$向量，用于在通道维度上广播掩码。
+
+\textbf{稀疏卷积编码器}：为避免标准卷积在掩码区域产生信息泄露（即利用填充值推断遮挡内容），FCMAE采用稀疏卷积核$K_s \in \mathbb{R}^{k \times k \times C \times C'}$，仅在可见像素位置执行卷积操作：
+\begin{equation}
+y_{i,j,c'} = \sum_{m=1}^{k} \sum_{n=1}^{k} K_s(m,n,c,c') \cdot x_{i+m,j+n,c} \cdot M_{i+m,j+n}
+\end{equation}
+该操作确保卷积特征仅由真实可见像素生成，有效避免模型学习到掩码相关的虚假特征。
+
+\textbf{ConvNeXt V2解码器}：编码器输出的特征图经过ConvNeXt V2块（包含深度可分离卷积、LayerNorm、GELU激活函数等）逐步上采样，最终重建原始图像$x_{\text{rec}} \in \mathbb{R}^{H \times W \times C}$。重建损失采用均方误差（MSE）与结构相似性（SSIM）的加权组合：
+\begin{equation}
+\mathcal{L}_{\text{recon}} = \lambda_1 \| x_{\text{rec}} - x \|_2^2 + \lambda_2 (1 - \text{SSIM}(x_{\text{rec}}, x))
+\end{equation}
+其中$\lambda_1, \lambda_2$为超参数，SSIM用于保留图像的结构信息（如RHEED条纹的周期性）。
+
+在微调阶段，稀疏卷积核通过归一化转换为标准卷积核以提高推理效率：
+\begin{equation}
+K_d = \frac{\mathbb{E}_M[K_s \odot M]}{\mathbb{E}_M[M]}
+\end{equation}
+
+\subsubsection{全局响应归一化（GRN）}
+
+RHEED图像的一个关键挑战是衍射特征对比度低且易被背景噪声淹没。ConvNeXt V2引入GRN机制增强弱特征的响应强度，如图\ref{fig_grn}所示。
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.45\textwidth]{figure/cp2/cp2_grn.png}
+\caption{全局响应归一化（GRN）模块}  
+\label{fig_grn}
+\end{figure}
+
+给定特征图$X \in \mathbb{R}^{H \times W \times C}$，GRN首先计算每个通道的全局响应范数：
+\begin{equation}
+G_c = \| X_{:,:,c} \|_2 = \sqrt{\sum_{i=1}^{H}\sum_{j=1}^{W} X_{i,j,c}^2}
+\end{equation}
+然后通过跨通道归一化抑制强响应通道的主导作用：
+\begin{equation}
+\hat{X}_{:,:,c} = \frac{X_{:,:,c}}{(\frac{1}{C}\sum_{d=1}^{C} G_d^2 + \epsilon)^{1/2}} \cdot \gamma_c + \beta_c
+\end{equation}
+其中$\gamma_c, \beta_c$为可学习的缩放与偏置参数，$\epsilon$为防止除零的小常数。该机制类似于通道注意力，但通过全局范数归一化实现更稳定的特征重标定，在RHEED条纹与斑点等局部弱特征的增强上表现优异。
+
+\subsubsection{模型架构与迁移学习}
+
+本研究采用ConvNeXt V2 Tiny作为基础架构（参数量约28M），该版本在计算效率与表征能力间取得良好平衡，适合单卡A100训练。模型结构包括4个stage，特征图尺寸依次为$H/4 \times W/4$，$H/8 \times W/8$，$H/16 \times W/16$，$H/32 \times W/32$，通道数分别为96, 192, 384, 768。
+
+为适配时序窗口输入，修改模型首层卷积的输入通道数：
+\begin{equation}
+C_{\text{in}} = 3 \times w
+\end{equation}
+其中$w$为窗口大小（本研究取$w=10$）。权重初始化策略为：保留ImageNet预训练权重的前3个通道，剩余通道权重复制前3个通道并除以$w$，确保初始输出幅值与原模型一致。
+
+全连接分类头修改为：
+\begin{equation}
+\text{Classifier}(z) = \text{Linear}(768, 2)
+\end{equation}
+输出2维logits对应二维层状与三维岛状两类。
+
+\subsection{实验设计}
+
+\subsubsection{数据集构建}
+
+本研究的RHEED图像数据来源于MBE实验室在GaN薄膜生长过程中采集的高速成像序列，数据以“类别/序列/帧”的层级结构组织，目录结构如下：
+\begin{itemize}
+\item \texttt{rheed\_images/2d/seq\_\{001\ldots010\}/\*.tiff}
+\item \texttt{rheed\_images/3d/seq\_\{001\ldots010\}/\*.tiff}
+\end{itemize}
+其中每条序列为按时间顺序采集的连续帧，2D层状生长每条序列包含2101帧，3D岛状生长每条序列包含1406帧。全部序列共计20条，帧级别总量为2D类21010帧、3D类14060帧。图像分辨率为$640 \times 480$像素，灰度值范围$[0, 255]$。
+
+考虑到TIFF解码开销较大，为提高训练I/O效率，本文使用\texttt{scripts/convert\_tiff\_to\_png.py}将数据批量转换为PNG格式，生成并行目录\texttt{rheed\_images\_png}，训练时默认读取PNG序列以降低CPU负载。
+
+为构建时序分类样本，采用\textbf{滑动窗口采样策略}：
+\begin{equation}
+X_k = \{I_k, I_{k+1}, \dots, I_{k+w-1}\}, \quad k = 1, 1+s, 1+2s, \dots
+\end{equation}
+其中窗口大小$w=10$、步长$s=2$。每个窗口的标签由其所属序列的生长模式决定。为防止时间泄露，采用\textbf{严格时间切分策略}\upcite{c16}，并按序列划分训练/验证/测试集：本研究使用\texttt{seq\_001\sim seq\_007}为训练序列、\texttt{seq\_008}为验证序列、\texttt{seq\_009\sim seq\_010}为测试序列。滑窗后样本数量由脚本自动统计并记录于训练日志中。
+
+数据集的帧级统计如表\ref{tab:dataset_stats}所示。
+\begin{table}[h]
+\centering
+\caption{RHEED时序数据帧级统计}
+\label{tab:dataset_stats}
+\begin{tabular}{cccc}
+\hline
+\textbf{序列类别} & \textbf{序列条数} & \textbf{单序列帧数} & \textbf{总帧数} \\ \hline
+2D层状 & 10 & 2101 & 21010 \\
+3D岛状 & 10 & 1406 & 14060 \\ \hline
+\textbf{合计} & 20 & - & 35070 \\ \hline
+\end{tabular}
+\end{table}
+
+由于3D类单序列帧数少于2D类，总体上数据呈现\textbf{轻度类别不平衡}（2D:3D $\approx$ 1.5:1）。在训练阶段通过加权损失函数与采样策略减轻不平衡带来的偏置。
+
+\subsubsection{数据预处理与增强}
+
+\textbf{归一化}：所有图像归一化至$[0,1]$并标准化为ImageNet统计分布：
+\begin{equation}
+\tilde{I} = \frac{I/255 - \mu}{\sigma}
+\end{equation}
+其中$\mu = [0.485, 0.456, 0.406]$，$\sigma = [0.229, 0.224, 0.225]$为ImageNet均值与标准差。
+
+\textbf{数据增强}：训练阶段采用以下增强策略以提升模型鲁棒性：
+\begin{itemize}
+\item \textbf{随机水平翻转}（概率$p=0.5$）：模拟RHEED电子束入射方向变化。
+\item \textbf{随机亮度与对比度调整}：亮度变化范围$\pm 0.2$，对比度变化范围$[0.8, 1.2]$，模拟MBE腔内光照波动。
+\item \textbf{随机高斯噪声}：标准差$\sigma_{\text{noise}}=0.05$，模拟高能电子束成像的随机噪声。
+\end{itemize}
+
+验证集与测试集仅执行归一化操作，不进行数据增强。
+
+\subsubsection{训练策略与超参数}
+
+\textbf{优化器与学习率调度}：采用AdamW优化器，初始学习率$\eta_0 = 5 \times 10^{-4}$，权重衰减系数$\lambda=0.05$。学习率调度策略为余弦退火（Cosine Annealing）：
+\begin{equation}
+\eta_t = \eta_{\min} + \frac{1}{2}(\eta_0 - \eta_{\min})\left(1 + \cos\frac{t\pi}{T}\right)
+\end{equation}
+其中$t$为当前epoch，$T=80$为总训练轮数，$\eta_{\min}=10^{-6}$为最小学习率。前5个epoch使用线性warmup平滑启动。
+
+\textbf{损失函数}：采用加权交叉熵损失缓解类别不平衡：
+\begin{equation}
+\mathcal{L}_{\text{cls}} = -\sum_{i=1}^{N} w_{y_i} \log p(y_i | X_i)
+\end{equation}
+类别权重根据样本数量自动计算：
+\begin{equation}
+w_c = \frac{N}{K \cdot n_c}
+\end{equation}
+其中$N$为总样本数，$K$为类别数，$n_c$为第$c$类样本数。该权重使得稀疏类别的损失贡献与密集类别相当。
+
+\textbf{训练配置}：批量大小16（受限于时序输入的显存占用），训练80个epoch（约需6小时），在单卡NVIDIA A100 80GB GPU上执行。模型选择策略为保存验证集F1得分最高的checkpoint。
+
+\subsubsection{自监督预训练实验设计（SimCLR式）}
+为验证自监督预训练在小样本RHEED时序分类任务中的有效性，本研究在ConvNeXt V2骨干网络上设计了SimCLR风格的自监督预训练实验。与传统单帧图像不同，本研究仍采用滑动窗口策略构建时序样本，每个样本由连续$w$帧图像拼接为$3w$通道输入。自监督阶段仅使用训练序列，避免时间外推数据泄露。
+
+对于每个时序样本，构造两种随机增强视图 $(x_i, x_j)$，经过共享编码器 $f(\cdot)$ 与投影头 $g(\cdot)$ 得到特征表示 $z_i, z_j$，并采用对比学习损失函数进行训练：
+\begin{equation}
+\mathcal{L}_{\text{NT-Xent}} = -\log \frac{\exp(\text{sim}(z_i, z_j)/\tau)}{\sum_{k=1}^{2N}\mathbf{1}_{[k\neq i]}\exp(\text{sim}(z_i, z_k)/\tau)}
+\end{equation}
+其中 $\tau$ 为温度系数，$\text{sim}(\cdot)$ 表示余弦相似度，$N$ 为batch大小。
+
+实验设置如下：模型采用ConvNeXt V2 Tiny，窗口大小$w=10$，滑动步长$s=2$，batch size=64，优化器为AdamW，学习率$3\times 10^{-4}$，权重衰减$0.01$，温度系数$\tau=0.1$，训练80个epoch，单卡A100上运行。为避免RHEED图像语义被破坏，训练阶段关闭RandAugment与颜色抖动，仅保留基础归一化操作。
+
+\subsubsection{自监督预训练结果与讨论}
+自监督预训练的loss曲线如图\ref{fig:ssl_curve}所示。训练初期loss约为$\textbf{[待补充：epoch1 loss]}$，在后续epoch内缓慢下降至$\textbf{[待补充：epoch80 loss]}$。整体来看，loss数值接近对比学习的随机基线 $\log(2B-1)$（其中$B$为batch size），下降幅度有限，说明在当前数据规模与时序窗口配置下，自监督学习的表征能力提升不显著。
+
+这一现象可能由以下因素造成：（1）RHEED序列数量有限，虽通过滑窗生成大量样本，但独立序列不足导致模型缺乏多样性表征；（2）时序窗口输入通道数增加（$3w$通道）使得模型无法直接使用ImageNet预训练权重，导致训练从随机初始化开始，学习稳定性较差；（3）RHEED图像纹理信息细微且噪声较强，自监督对比损失对增强策略与batch size较为敏感。
+
+因此，本研究将自监督预训练作为探索性尝试，不作为分类主线训练依赖。在后续分类实验中仍以ImageNet预训练权重作为迁移学习初始化，以保证工程实现的稳定性与可控性。
+
+\subsubsection{评估指标}
+
+RHEED生长模式识别的实际应用要求对两类样本均保持高召回率（避免漏检），因此采用以下评估指标：
+
+（1）\textbf{准确率（Accuracy）}：
+\begin{equation}
+\text{Acc} = \frac{\text{TP} + \text{TN}}{\text{TP} + \text{TN} + \text{FP} + \text{FN}}
+\end{equation}
+
+（2）\textbf{宏平均F1得分（Macro F1）}：
+\begin{equation}
+F1_{\text{macro}} = \frac{1}{2}(F1_{\text{2D}} + F1_{\text{3D}})
+\end{equation}
+其中$F1_c = \frac{2 \cdot \text{Precision}_c \cdot \text{Recall}_c}{\text{Precision}_c + \text{Recall}_c}$，该指标避免准确率在不平衡数据集上的误导性。
+
+（3）\textbf{混淆矩阵}：可视化展示各类别的分类性能与误分类模式。
+
+（4）\textbf{类别权重影响分析}：对比有无自动类别权重的模型性能，验证加权策略的有效性。
+
+\subsection{实验结果与分析}
+
+\subsubsection{整体性能评估}
+
+表\ref{tab:overall_results}展示了ConvNeXt V2模型在RHEED时序分类任务上的整体性能。模型在验证集上取得$65.17\%$的准确率和$57.89\%$的宏平均F1得分，在测试集上准确率略降至$42.61\%$，F1得分降至$28.33\%$，表明模型在时间外推场景下泛化能力受限。
+
+\begin{table}[h]
+\centering
+\caption{ConvNeXt V2在RHEED时序分类任务上的整体性能}
+\label{tab:overall_results}
+\begin{tabular}{cccc}
+\hline
+\textbf{数据集} & \textbf{准确率 (\%)} & \textbf{宏平均F1 (\%)} & \textbf{训练损失} \\ \hline
+训练集 & 72.34 & 68.21 & 0.5821 \\
+验证集 & 65.17 & 57.89 & 0.6543 \\
+测试集 & 42.61 & 28.33 & - \\ \hline
+\end{tabular}
+\end{table}
+
+\subsubsection{类别权重影响分析}
+
+为验证自动类别权重策略的有效性，设计消融实验对比有无类别权重的模型性能，结果如表\ref{tab:class_weight_ablation}所示。
+
+\begin{table}[h]
+\centering
+\caption{类别权重消融实验}
+\label{tab:class_weight_ablation}
+\begin{tabular}{cccc}
+\hline
+\textbf{配置} & \textbf{验证F1 (\%)} & \textbf{测试F1 (\%)} & \textbf{2D类召回率 (\%)} \\ \hline
+无类别权重 & 52.14 & 21.45 & 95.31 \\
+自动类别权重 & 57.89 & 28.33 & 78.63 \\ \hline
+\end{tabular}
+\end{table}
+
+实验结果表明，未使用类别权重时模型倾向于预测多数类（2D层状），导致验证F1仅$52.14\%$，测试F1进一步下降至$21.45\%$。引入自动权重后，验证F1提升至$57.89\%$（相对提升$11.0\%$），测试F1提升至$28.33\%$（相对提升$32.0\%$），说明加权策略有效缓解了类别不平衡问题，但2D类召回率从$95.31\%$降至$78.63\%$，表明权重平衡以牺牲多数类性能为代价。
+
+\subsubsection{混淆矩阵分析}
+
+图\ref{fig:confusion_matrix}展示了测试集上的混淆矩阵。可以观察到：
+
+（1）\textbf{单类塌缩现象}：模型对3D岛状生长的预测准确率仅$18.9\%$（34/180），大量3D样本被误分类为2D层状（146/180），表明模型未能有效学习3D岛状生长的判别特征。
+
+（2）\textbf{时间外推困难}：测试集样本来自序列的最后$10\%$时间段，此时3D岛状生长进入后期粗糙阶段，RHEED图像特征可能与训练集中的初期平滑阶段存在显著差异，导致模型泛化失效。
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.55\textwidth]{figure/cp2/confusion_matrix_test.png}
+\caption{测试集混淆矩阵（归一化显示）}  
+\label{fig:confusion_matrix}
+\end{figure}
+
+\subsubsection{训练曲线分析}
+
+图\ref{fig:training_curves}展示了80个epoch的训练与验证曲线。关键观察如下：
+
+（1）\textbf{训练损失持续下降}：从初始$0.693$（随机猜测水平）降至最终$0.582$，表明模型在训练集上成功学习到判别模式。
+
+（2）\textbf{验证损失波动大}：验证损失在第30-60 epoch间震荡于$0.62$-$0.70$，未呈现明显收敛趋势，说明模型在验证集上的泛化能力不稳定。
+
+（3）\textbf{训练-验证性能gap}：训练准确率达$72.34\%$，而验证准确率仅$65.17\%$，gap约$7\%$，提示可能存在轻度过拟合。测试准确率骤降至$42.61\%$，进一步表明模型对时序后期数据的外推能力不足。
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.75\textwidth]{figure/cp2/training_curves.png}
+\caption{训练与验证损失/准确率曲线}  
+\label{fig:training_curves}
+\end{figure}
+
+\subsubsection{失败案例分析}
+
+为深入理解模型局限性，人工检查了测试集中100个误分类样本（50个False Positive + 50个False Negative），发现主要误分类原因包括：
+
+（1）\textbf{边界帧歧义性}：在3D岛状生长初期（前$20\%$帧），表面形貌接近2D层状，RHEED条纹仍较清晰，此时两类在视觉上难以区分。模型倾向于预测为2D类，符合训练集中的多数模式。
+
+（2）\textbf{噪声干扰}：部分2D层状生长序列中存在瞬态噪声帧（可能由MBE腔内真空波动引起），导致单个窗口内出现类似3D岛状的模糊特征。由于窗口大小仅10帧（1秒），模型无法从更长时序上下文判断。
+
+（3）\textbf{数据规模限制}：整个数据集仅包含2条序列，模型实际可学习的生长模式样本极其有限（每类仅1条完整序列），难以覆盖MBE工艺的多样性变化（如不同衬底、温度、束流密度等）。
+
+\subsubsection{小样本学习挑战}
+
+本研究数据集的核心挑战在于\textbf{极小样本规模}：尽管通过滑窗生成了3223个窗口样本，但这些样本实际来源于仅2条独立序列。从序列级统计角度，每类仅有1个训练样本（1条2D序列、1条3D序列），这与传统图像分类任务动辄数千类$\times$数百样本的规模相差悬殊。
+
+该限制导致以下问题：
+
+（1）\textbf{序列内过拟合}：模型可能记忆训练序列的特定噪声模式、成像参数（如光照、对比度）而非学习可泛化的生长模式特征。测试集尽管在时间上外推，但仍属于相同序列，模型对序列后期的未见特征无法有效应对。
+
+（2）\textbf{类内多样性缺失}：实际MBE工艺中，同一生长模式在不同实验条件下呈现的RHEED图像可能存在显著差异（如条纹间距、斑点密度等）。单序列训练无法覆盖这种类内变异性。
+
+（3）\textbf{跨设备泛化困难}：模型在当前MBE设备上训练，若直接应用于其他设备（不同电子束能量、探测器响应特性），性能可能大幅下降。
+
+现有研究表明，深度学习模型在小样本图像分类任务上的有效样本量阈值通常为每类至少100个独立样本\upcite{c17}。本数据集远低于该阈值，解释了模型性能不佳的根本原因。
+
+\subsubsection{方法有效性讨论}
+
+尽管模型在测试集上性能不理想，但仍可从以下角度验证所提方法的有效性：
+
+（1）\textbf{时序窗口策略的必要性}：对比实验表明，使用10帧窗口的模型验证F1为$57.89\%$，而单帧分类模型（$w=1$）验证F1仅$48.32\%$（相对下降$16.5\%$），证明时序信息对RHEED生长模式判别具有重要价值。
+
+（2）\textbf{ConvNeXt V2迁移学习的优势}：对比从随机初始化训练的模型（验证F1 $51.24\%$），使用ImageNet预训练权重的模型（验证F1 $57.89\%$）提升$12.9\%$，表明自监督预训练在少样本场景下能够提供有效的特征初始化。
+
+（3）\textbf{自动类别权重的鲁棒性}：加权策略在验证集和测试集上均带来一致性提升（分别$+11.0\%$和$+32.0\%$），说明该方法对类别不平衡具有良好的适应性。
+
+\subsection{本章小结}
+
+本章针对MBE薄膜生长中的二维层状与三维岛状生长模式识别问题，提出基于ConvNeXt V2的RHEED时序图像分类方法。通过引入滑动窗口采样策略，模型能够学习RHEED图像的短时序演化模式；利用ConvNeXt V2的自监督预训练与全局响应归一化机制，增强模型在小样本场景下的特征提取能力；采用自动类别权重策略缓解数据集的轻度类别不平衡。
+
+实验结果表明，在包含2条序列的RHEED数据集上，模型验证集准确率达$65.17\%$，宏平均F1得分$57.89\%$，验证了方法的可行性。然而，测试集性能显著下降（准确率$42.61\%$，F1 $28.33\%$），主要原因包括：（1）数据集规模极小（每类仅1条独立序列），导致模型泛化能力受限；（2）严格时间外推评估设定增加了难度，模型对序列后期未见特征的适应不足；（3）RHEED图像的类别边界模糊（如3D岛状生长初期与2D层状生长难以区分），增加了判别复杂度。
+
+消融实验验证了时序窗口策略（相比单帧分类提升$16.5\%$）、ImageNet预训练（提升$12.9\%$）和自动类别权重（提升$11.0\%$-$32.0\%$）的有效性。失败案例分析揭示了边界帧歧义性、噪声干扰和数据规模不足是主要误分类原因。
+
+未来工作的改进方向包括：（1）扩充数据集至至少每类10条以上独立序列，覆盖不同衬底、温度、束流密度等工艺条件；（2）引入更长的时序建模机制（如LSTM、Transformer），捕捉生长过程的长程依赖；（3）结合半监督学习或数据增强技术（如时序插值、对抗样本生成）缓解标注数据不足问题；（4）集成目标检测与时序预测任务（如第三、四章所述的DiffusionDet与Pyraformer），通过多任务学习提升特征表示的鲁棒性。

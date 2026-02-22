@@ -26,7 +26,8 @@ Thumbs.db
 # ---- Data (do not version large datasets) ----
 /data_rheed/
 /data_finetune/
-/data_pretrain/
+/rheed_images/
+/rheed_images_png/
 
 # If you have small helper scripts under data_processed, keep them:
 !data_processed/**/*.py
@@ -59,5 +60,4 @@ Thumbs.db
 *.swp
 
 # docs
-/docs/
-/MinkowskiEngine/
+# /docs/
