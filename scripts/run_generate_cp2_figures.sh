@@ -26,7 +26,7 @@ if [ -z "$TIME_SUFFIX" ]; then
     TIME_SUFFIX="unknown"
 fi
 
-python -m src.generate_cp2_figures \
+python -m tools.generate_cp2_figures \
     --exp_dir "$EXP_DIR" \
     --output_dir "$OUTPUT_DIR" \
     --dpi "$DPI" \

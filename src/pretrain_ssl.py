@@ -18,7 +18,7 @@ import timm
 from timm.data import create_transform
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
-from src.train_timm import build_sequence_samples, _to_rgb
+from src.train_timm import build_sequence_samples, _to_rgb, _load_image
 
 
 class SSLSequenceWindowDataset(torch.utils.data.Dataset):
@@ -35,10 +35,9 @@ class SSLSequenceWindowDataset(torch.utils.data.Dataset):
         frames1 = []
         frames2 = []
         for path in frame_paths:
-            with Image.open(path) as img:
-                img = _to_rgb(img)
-                img1 = self.transform1(img) if self.transform1 is not None else img
-                img2 = self.transform2(img) if self.transform2 is not None else img
+            img = _load_image(path)
+            img1 = self.transform1(img) if self.transform1 is not None else img
+            img2 = self.transform2(img) if self.transform2 is not None else img
             frames1.append(img1)
             frames2.append(img2)
         images1 = torch.cat(frames1, dim=0)

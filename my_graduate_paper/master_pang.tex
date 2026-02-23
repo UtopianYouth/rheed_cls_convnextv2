@@ -70,8 +70,8 @@
 \usepackage{bibspacing}
 \setlength{\bibspacing}{1\baselineskip}
 
-%给目录和参考文献加上超链接
-\usepackage[hidelinks]{hyperref}
+%给目录和参考文献加上超链接（hyperref 已在 szu-master.cls 中加载，这里不要重复加载以避免 option clash）
+%\usepackage[hidelinks]{hyperref}
 
 %引用
 \newcommand{\upcite}[1]{{\textsuperscript{\cite{#1}}}}
@@ -83,6 +83,7 @@
 
 
 \hypersetup{
+	hidelinks,
 	pdfborder = {0 0 0} 
 }
 

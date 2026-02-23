@@ -49,7 +49,6 @@ else
 fi
 
 # 可通过环境变量覆盖
-MODE=${MODE:-"sequence_train"}
 MODEL=${MODEL:-"convnextv2_tiny"}
 BATCH_SIZE=${BATCH_SIZE:-32}
 EPOCHS=$epochs_val
@@ -62,44 +61,58 @@ USE_AMP=${USE_AMP:-true}
 LABEL_SMOOTHING=${LABEL_SMOOTHING:-0.0}
 DEBUG_PRED_STATS=${DEBUG_PRED_STATS:-true}
 
-# 模式开关：sequence_train
-case "$MODE" in
-  sequence_train)
-    SEQUENCE_MODE=true
-    SEQUENCE_ROOT=${SEQUENCE_ROOT:-"rheed_images"}
-    WINDOW_SIZE=${WINDOW_SIZE:-10}
-    WINDOW_STRIDE=${WINDOW_STRIDE:-2}
-    LR=${LR:-1e-4}
-    WEIGHT_DECAY=${WEIGHT_DECAY:-0.05}
-    AUTO_CLASS_WEIGHTS=${AUTO_CLASS_WEIGHTS:-true}
-    BALANCED_SAMPLER=${BALANCED_SAMPLER:-true}
-    PRETRAINED=${PRETRAINED:-false}
-    ;;
-  *)
-    echo "未知MODE: $MODE (可选: sequence_train)"
-    exit 1
-    ;;
- esac
-
-# 序列数据路径（仅sequence_train使用）
+# 统一使用序列模式；WINDOW_SIZE=1 等价于单帧训练
+SEQUENCE_MODE=true
 SEQUENCE_ROOT=${SEQUENCE_ROOT:-"rheed_images"}
+WINDOW_SIZE=${WINDOW_SIZE:-10}
+WINDOW_STRIDE=${WINDOW_STRIDE:-2}
+LR=${LR:-1e-4}
+WEIGHT_DECAY=${WEIGHT_DECAY:-0.05}
+AUTO_CLASS_WEIGHTS=${AUTO_CLASS_WEIGHTS:-true}
+BALANCED_SAMPLER=${BALANCED_SAMPLER:-false}
+PRETRAINED=${PRETRAINED:-true}
+
+# 序列数据路径
 SPLIT_RATIO=${SPLIT_RATIO:-"0.7,0.2,0.1"}
 STRICT_TIME_SPLIT=${STRICT_TIME_SPLIT:-true}
 SEQ_TRAIN=${SEQ_TRAIN:-"seq_001,seq_002,seq_003,seq_004,seq_005,seq_006,seq_007"}
 SEQ_VAL=${SEQ_VAL:-"seq_008"}
 SEQ_TEST=${SEQ_TEST:-"seq_009,seq_010"}
 
-# 预训练权重
+# 预训练权重选择
+# PRETRAIN_SOURCE: imagenet | ssl | none
+PRETRAIN_SOURCE=${PRETRAIN_SOURCE:-"imagenet"}
 PRETRAINED_WEIGHTS=${PRETRAINED_WEIGHTS:-""}
 
 EXTRA_ARGS=()
 
-if [ -n "$PRETRAINED_WEIGHTS" ]; then
-  PRETRAINED=true
-  EXTRA_ARGS+=(--pretrained_weights "$PRETRAINED_WEIGHTS")
+if [ -n "$PRETRAINED_WEIGHTS" ] && [ "$PRETRAIN_SOURCE" = "imagenet" ]; then
+  PRETRAIN_SOURCE="ssl"
+  echo "检测到PRETRAINED_WEIGHTS，自动切换为 PRETRAIN_SOURCE=ssl"
 fi
 
-echo "运行模式: $MODE | SEQUENCE_MODE=true WINDOW_SIZE=$WINDOW_SIZE STRIDE=$WINDOW_STRIDE LR=$LR WD=$WEIGHT_DECAY"
+case "$PRETRAIN_SOURCE" in
+  imagenet)
+    PRETRAINED=true
+    ;;
+  ssl)
+    if [ -z "$PRETRAINED_WEIGHTS" ]; then
+      echo "PRETRAIN_SOURCE=ssl 需要提供 PRETRAINED_WEIGHTS"
+      exit 1
+    fi
+    PRETRAINED=true
+    EXTRA_ARGS+=(--pretrained_weights "$PRETRAINED_WEIGHTS")
+    ;;
+  none)
+    PRETRAINED=false
+    ;;
+  *)
+    echo "未知 PRETRAIN_SOURCE: $PRETRAIN_SOURCE (可选: imagenet | ssl | none)"
+    exit 1
+    ;;
+esac
+
+echo "SEQUENCE_MODE=true WINDOW_SIZE=$WINDOW_SIZE STRIDE=$WINDOW_STRIDE LR=$LR WD=$WEIGHT_DECAY"
 
 OUTPUT_DIR="outputs/finetune_timm_$(date +%Y%m%d_%H%M%S)"
 

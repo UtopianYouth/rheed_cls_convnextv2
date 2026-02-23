@@ -56,6 +56,31 @@ def _to_rgb(img):
         return img
 
 
+def _linear_normalize(arr):
+    arr = arr.astype(np.float32)
+    vmin = float(arr.min())
+    vmax = float(arr.max())
+    if vmax <= vmin:
+        return np.zeros_like(arr, dtype=np.uint8)
+    norm = (arr - vmin) / (vmax - vmin)
+    norm = np.clip(norm * 255.0, 0, 255).astype(np.uint8)
+    return norm
+
+
+def _load_image(path):
+    with Image.open(path) as img:
+        suffix = Path(path).suffix.lower()
+        if suffix in (".tif", ".tiff"):
+            img = img.convert("I")
+            arr = np.array(img)
+            arr = _linear_normalize(arr)
+            img = Image.fromarray(arr, mode="L")
+            img = _to_rgb(img)
+            return img
+        img = _to_rgb(img)
+        return img
+
+
 def summarize_dataset_stats(dataset, class_to_idx):
     stats = {}
     for i, (img, label) in enumerate(dataset):
@@ -238,7 +263,12 @@ def build_sequence_samples(
     split_map = {}
     if fixed_mode:
         split_map, train_list, val_list, test_list = _build_fixed_seq_map(seq_train, seq_val, seq_test)
-        print(f"[SEQ] 固定划分: train={train_list}, val={val_list}, test={test_list}")
+        parts = [f"train={train_list}"]
+        if val_list:
+            parts.append(f"val={val_list}")
+        if test_list:
+            parts.append(f"test={test_list}")
+        print(f"[SEQ] 固定划分: {', '.join(parts)}")
 
     for class_name in class_names:
         class_dir = os.path.join(sequence_root, class_name)
@@ -314,10 +344,9 @@ class SequenceWindowDataset(torch.utils.data.Dataset):
         frame_paths, label = self.samples[idx]
         frames = []
         for path in frame_paths:
-            with Image.open(path) as img:
-                img = _to_rgb(img)
-                if self.transform is not None:
-                    img = self.transform(img)
+            img = _load_image(path)
+            if self.transform is not None:
+                img = self.transform(img)
             frames.append(img)
 
         if not frames:
@@ -437,6 +466,44 @@ def _save_checkpoint(path, model, epoch, args, best_metric):
         "best_metric": best_metric,
     }
     torch.save(state, path)
+
+
+def _adapt_first_conv(state_dict, model_state, in_chans):
+    for k, v in state_dict.items():
+        if k not in model_state:
+            continue
+        if v.ndim == 4 and model_state[k].ndim == 4:
+            if v.shape[1] == 3 and model_state[k].shape[1] == in_chans:
+                if in_chans % 3 != 0:
+                    raise ValueError(f"in_chans={in_chans} 不能被3整除，无法通道扩展")
+                repeat = in_chans // 3
+                state_dict[k] = v.repeat(1, repeat, 1, 1) / repeat
+                print(f"[PRETRAIN] 扩展首层卷积通道: {k} 3 -> {in_chans}")
+                break
+
+
+def _load_imagenet_pretrained(model, model_name, in_chans):
+    ref_model = timm.create_model(
+        model_name,
+        pretrained=True,
+        num_classes=1000,
+        in_chans=3,
+    )
+    state_dict = ref_model.state_dict()
+    model_state = model.state_dict()
+
+    _adapt_first_conv(state_dict, model_state, in_chans)
+
+    for k in list(state_dict.keys()):
+        if k not in model_state:
+            del state_dict[k]
+            continue
+        if state_dict[k].shape != model_state[k].shape:
+            del state_dict[k]
+
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    print(f"Loaded ImageNet pretrained weights for {model_name}")
+    print(f"Missing keys: {len(missing)}, Unexpected keys: {len(unexpected)}")
 
 
 def _load_pretrained(model, weight_path):
@@ -607,6 +674,10 @@ def evaluate(model, loader, criterion, device, use_amp, split_name="val", debug_
 def main():
     args = parse_args()
 
+    if args.pretrained_weights:
+        if not os.path.isfile(args.pretrained_weights):
+            raise RuntimeError(f"预训练权重文件不存在: {args.pretrained_weights}")
+
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark = True
@@ -712,17 +783,16 @@ def main():
 
     # build model
     in_chans = 3 * args.window_size if args.sequence_mode else 3
-    pretrained_flag = args.pretrained and not args.pretrained_weights
-    if args.sequence_mode and pretrained_flag:
-        print("[WARN] 序列模式下 in_chans != 3，已禁用timm预训练权重")
-        pretrained_flag = False
 
     model = timm.create_model(
         args.model,
-        pretrained=pretrained_flag,
+        pretrained=False,
         num_classes=args.num_classes,
         in_chans=in_chans,
     )
+
+    if args.pretrained and not args.pretrained_weights:
+        _load_imagenet_pretrained(model, args.model, in_chans)
 
     if args.pretrained_weights:
         _load_pretrained(model, args.pretrained_weights)

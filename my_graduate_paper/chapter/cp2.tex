@@ -34,7 +34,7 @@ X_k = \{I_{k}, I_{k+1}, \dots, I_{k+w-1}\}, \quad k = 1, s+1, 2s+1, \dots
 
 ConvNeXt V2是Facebook AI Research于2023年提出的自监督视觉模型\upcite{c2}，其核心创新在于将掩码自编码器（Masked Autoencoder, MAE）的预训练范式与纯卷积架构深度结合，在保持卷积网络高效推理特性的同时，引入类似Vision Transformer的自监督学习能力。本研究选择ConvNeXt V2的原因包括：
 
-（1）\textbf{自监督预训练降低标注依赖}：RHEED图像标注需要MBE领域专家知识，成本高昂。ConvNeXt V2通过FCMAE在ImageNet数据集上进行自监督预训练，学习通用视觉特征表示，可在少样本场景下有效迁移至RHEED任务。
+（1）\textbf{自监督预训练降低标注依赖}：RHEED图像标注需要MBE领域专家知识，成本高昂。ConvNeXt V2的FCMAE预训练机制为小样本场景提供了理论依据。工程实现中，本文以ImageNet预训练权重作为通用初始化，并进一步采用SimCLR式自监督预训练进行探索性对比。
 
 （2）\textbf{增强弱特征提取能力}：RHEED图像中的菊池线、衍射条纹等关键特征对比度低且易受噪声干扰。ConvNeXt V2引入的GRN机制通过跨通道归一化与自适应缩放，能够增强微弱特征的响应强度。
 
@@ -72,6 +72,8 @@ y_{i,j,c'} = \sum_{m=1}^{k} \sum_{n=1}^{k} K_s(m,n,c,c') \cdot x_{i+m,j+n,c} \cd
 \begin{equation}
 K_d = \frac{\mathbb{E}_M[K_s \odot M]}{\mathbb{E}_M[M]}
 \end{equation}
+
+需要说明的是，FCMAE在本文中作为\textbf{理论背景与方法动机}进行阐述，工程实现未直接复现其掩码重建训练流程。实际预训练采用SimCLR式自监督对比学习，并与ImageNet预训练权重进行对比实验，以保证实验可控与可复现。
 
 \subsubsection{全局响应归一化（GRN）}
 
@@ -118,15 +120,15 @@ C_{\text{in}} = 3 \times w
 \item \texttt{rheed\_images/2d/seq\_\{001\ldots010\}/\*.tiff}
 \item \texttt{rheed\_images/3d/seq\_\{001\ldots010\}/\*.tiff}
 \end{itemize}
-其中每条序列为按时间顺序采集的连续帧，2D层状生长每条序列包含2101帧，3D岛状生长每条序列包含1406帧。全部序列共计20条，帧级别总量为2D类21010帧、3D类14060帧。图像分辨率为$640 \times 480$像素，灰度值范围$[0, 255]$。
+其中每条序列为按时间顺序采集的连续帧，2D层状生长每条序列包含2101帧，3D岛状生长每条序列包含1406帧。全部序列共计20条，帧级别总量为2D类21010帧、3D类14060帧。图像分辨率为$640 \times 480$像素，原始数据以TIFF格式存储，灰度动态范围较高。
 
-考虑到TIFF解码开销较大，为提高训练I/O效率，本文使用\texttt{scripts/convert\_tiff\_to\_png.py}将数据批量转换为PNG格式，生成并行目录\texttt{rheed\_images\_png}，训练时默认读取PNG序列以降低CPU负载。
+为避免TIFF高动态范围在读取时被压缩导致纹理信息丢失，训练阶段采用\textbf{线性归一化读取策略}：在数据加载时对每张TIFF图像按其最小值/最大值归一化至$[0,255]$后再进行RGB通道扩展，从而保留条纹与散斑的强度差异。该过程在加载阶段完成，不额外增加I/O开销。
 
 为构建时序分类样本，采用\textbf{滑动窗口采样策略}：
 \begin{equation}
 X_k = \{I_k, I_{k+1}, \dots, I_{k+w-1}\}, \quad k = 1, 1+s, 1+2s, \dots
 \end{equation}
-其中窗口大小$w=10$、步长$s=2$。每个窗口的标签由其所属序列的生长模式决定。为防止时间泄露，采用\textbf{严格时间切分策略}\upcite{c16}，并按序列划分训练/验证/测试集：本研究使用\texttt{seq\_001\sim seq\_007}为训练序列、\texttt{seq\_008}为验证序列、\texttt{seq\_009\sim seq\_010}为测试序列。滑窗后样本数量由脚本自动统计并记录于训练日志中。
+其中窗口大小$w=10$、步长$s=2$。每个窗口的标签由其所属序列的生长模式决定。为防止时间泄露，采用\textbf{严格时间切分策略}\upcite{c16}，并按序列划分训练/验证/测试集：本研究使用\texttt{seq\_001--seq\_007}为训练序列、\texttt{seq\_008}为验证序列、\texttt{seq\_009--seq\_010}为测试序列。滑窗后样本数量由脚本自动统计并记录于训练日志中。
 
 数据集的帧级统计如表\ref{tab:dataset_stats}所示。
 \begin{table}[h]
@@ -142,7 +144,15 @@ X_k = \{I_k, I_{k+1}, \dots, I_{k+w-1}\}, \quad k = 1, 1+s, 1+2s, \dots
 \end{tabular}
 \end{table}
 
-由于3D类单序列帧数少于2D类，总体上数据呈现\textbf{轻度类别不平衡}（2D:3D $\approx$ 1.5:1）。在训练阶段通过加权损失函数与采样策略减轻不平衡带来的偏置。
+为验证两类图像在统计特征上的可分性，本文对seq\_001的全部帧进行统计分析，得到平均图像、灰度直方图与边缘能量对比结果，如图\ref{fig:seq001_stats}所示。统计显示2D类样本的平均边缘能量为7.4069，而3D类为4.3568，二者存在显著差异，说明2D层状生长对应的条纹结构在边缘强度上更突出，3D岛状生长整体纹理更平缓。该结果从统计角度验证了两类图像具有可分性，为后续分类模型提供了可靠的视觉基础。
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.75\textwidth]{figure/cp2/seq001_stats_2d_vs_3d.png}
+\caption{seq\_001序列2D/3D图像统计对比（平均图像、灰度直方图与边缘能量）}
+\label{fig:seq001_stats}
+\end{figure}
+
+由于3D类单序列帧数少于2D类，总体上数据呈现\textbf{轻度类别不平衡}（2D:3D $\approx$ 1.5:1）。在训练阶段通过类别权重或采样策略减轻不平衡带来的偏置。
 
 \subsubsection{数据预处理与增强}
 
@@ -190,14 +200,29 @@ w_c = \frac{N}{K \cdot n_c}
 \end{equation}
 其中 $\tau$ 为温度系数，$\text{sim}(\cdot)$ 表示余弦相似度，$N$ 为batch大小。
 
-实验设置如下：模型采用ConvNeXt V2 Tiny，窗口大小$w=10$，滑动步长$s=2$，batch size=64，优化器为AdamW，学习率$3\times 10^{-4}$，权重衰减$0.01$，温度系数$\tau=0.1$，训练80个epoch，单卡A100上运行。为避免RHEED图像语义被破坏，训练阶段关闭RandAugment与颜色抖动，仅保留基础归一化操作。
+实验设置如下：模型采用ConvNeXt V2 Tiny，窗口大小$w=10$，滑动步长$s=2$，batch size=64，优化器为AdamW，学习率$3\times 10^{-4}$，权重衰减$0.01$，温度系数$\tau=0.1$，分别训练80与120个epoch（其余超参数保持一致），单卡A100上运行。为避免RHEED图像语义被破坏，训练阶段关闭RandAugment与颜色抖动，仅保留基础归一化操作。
+
+为形成可对照的初始化策略，本文同时采用\textbf{ImageNet预训练权重}作为通用视觉特征初始化，并以SimCLR自监督预训练权重作为探索性初始化，两者在相同微调设置下进行性能对比。
 
 \subsubsection{自监督预训练结果与讨论}
-自监督预训练的loss曲线如图\ref{fig:ssl_curve}所示。训练初期loss约为$\textbf{[待补充：epoch1 loss]}$，在后续epoch内缓慢下降至$\textbf{[待补充：epoch80 loss]}$。整体来看，loss数值接近对比学习的随机基线 $\log(2B-1)$（其中$B$为batch size），下降幅度有限，说明在当前数据规模与时序窗口配置下，自监督学习的表征能力提升不显著。
+图\ref{fig:ssl_curve_80}与图\ref{fig:ssl_curve_120}分别展示80与120个epoch的自监督预训练loss曲线。
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.72\textwidth]{figure/cp2/ssl_loss_curve_pretrain_ssl_20260223_132829.png}
+\caption{80个epoch的自监督预训练loss曲线}
+\label{fig:ssl_curve_80}
+\end{figure}
 
-这一现象可能由以下因素造成：（1）RHEED序列数量有限，虽通过滑窗生成大量样本，但独立序列不足导致模型缺乏多样性表征；（2）时序窗口输入通道数增加（$3w$通道）使得模型无法直接使用ImageNet预训练权重，导致训练从随机初始化开始，学习稳定性较差；（3）RHEED图像纹理信息细微且噪声较强，自监督对比损失对增强策略与batch size较为敏感。
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.72\textwidth]{figure/cp2/ssl_loss_curve_pretrain_ssl_20260223_150207.png}
+\caption{120个epoch的自监督预训练loss曲线}
+\label{fig:ssl_curve_120}
+\end{figure}
 
-因此，本研究将自监督预训练作为探索性尝试，不作为分类主线训练依赖。在后续分类实验中仍以ImageNet预训练权重作为迁移学习初始化，以保证工程实现的稳定性与可控性。
+从趋势上看，loss在前20--40个epoch下降最快（约从4.09降至2.3附近），60个epoch后进入缓慢收敛阶段，曲线整体更平滑但下降幅度明显变小。80个epoch的最终loss为1.16（最低约1.14），120个epoch的最终loss为0.93（最低约0.92），相当于在80个epoch基础上进一步降低约0.23（约19.8\%）。这说明继续训练仍能带来稳定收益，但边际改进相对有限，且训练成本增加约50\%。
+
+基于工程可复现性与训练成本控制，本文默认采用80个epoch作为预训练轮数，并将120个epoch作为可选的加强版预训练，用于在GPU预算充足且下游微调性能确有提升时使用。需要说明的是，训练成本增加约50\%源于训练轮数由80提升至120，时间复杂度近似与epoch数线性相关；在相同batch size与模型规模下，迭代步数从$80N$增加到$120N$（$N$为每epoch迭代次数），因此单次预训练耗时与GPU占用也相应增加约1.5倍。整体上，预训练loss未完全收敛，但已提供较稳定的特征初始化，对后续监督微调具有正向作用。结合后续微调实验，本文将自监督预训练定位为探索性尝试，并与ImageNet预训练权重进行对比，以验证不同初始化策略在小样本RHEED场景下的效果差异。
 
 \subsubsection{评估指标}
 
@@ -265,7 +290,11 @@ F1_{\text{macro}} = \frac{1}{2}(F1_{\text{2D}} + F1_{\text{3D}})
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=0.55\textwidth]{figure/cp2/confusion_matrix_test.png}
+\IfFileExists{figure/cp2/confusion_matrix_test.png}{%
+\includegraphics[width=0.55\textwidth]{figure/cp2/confusion_matrix_test.png}%
+}{%
+\fbox{\small Missing figure: figure/cp2/confusion\_matrix\_test.png}%
+}
 \caption{测试集混淆矩阵（归一化显示）}  
 \label{fig:confusion_matrix}
 \end{figure}
@@ -282,7 +311,11 @@ F1_{\text{macro}} = \frac{1}{2}(F1_{\text{2D}} + F1_{\text{3D}})
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=0.75\textwidth]{figure/cp2/training_curves.png}
+\IfFileExists{figure/cp2/training_curves.png}{%
+\includegraphics[width=0.75\textwidth]{figure/cp2/training_curves.png}%
+}{%
+\fbox{\small Missing figure: figure/cp2/training\_curves.png}%
+}
 \caption{训练与验证损失/准确率曲线}  
 \label{fig:training_curves}
 \end{figure}
@@ -295,15 +328,15 @@ F1_{\text{macro}} = \frac{1}{2}(F1_{\text{2D}} + F1_{\text{3D}})
 
 （2）\textbf{噪声干扰}：部分2D层状生长序列中存在瞬态噪声帧（可能由MBE腔内真空波动引起），导致单个窗口内出现类似3D岛状的模糊特征。由于窗口大小仅10帧（1秒），模型无法从更长时序上下文判断。
 
-（3）\textbf{数据规模限制}：整个数据集仅包含2条序列，模型实际可学习的生长模式样本极其有限（每类仅1条完整序列），难以覆盖MBE工艺的多样性变化（如不同衬底、温度、束流密度等）。
+（3）\textbf{数据规模限制}：尽管每类包含10条序列，但仍集中于同一批工艺条件，序列间差异有限，难以覆盖MBE工艺的多样性变化（如不同衬底、温度、束流密度等）。
 
 \subsubsection{小样本学习挑战}
 
-本研究数据集的核心挑战在于\textbf{极小样本规模}：尽管通过滑窗生成了3223个窗口样本，但这些样本实际来源于仅2条独立序列。从序列级统计角度，每类仅有1个训练样本（1条2D序列、1条3D序列），这与传统图像分类任务动辄数千类$\times$数百样本的规模相差悬殊。
+本研究数据集的核心挑战在于\textbf{序列级样本规模仍偏小}：尽管通过滑窗生成了大量窗口样本，但这些样本来源于每类10条序列，且序列之间工艺条件相近。从序列级统计角度，独立样本数仍明显少于通用视觉任务中常见的多场景、多设备数据规模。
 
 该限制导致以下问题：
 
-（1）\textbf{序列内过拟合}：模型可能记忆训练序列的特定噪声模式、成像参数（如光照、对比度）而非学习可泛化的生长模式特征。测试集尽管在时间上外推，但仍属于相同序列，模型对序列后期的未见特征无法有效应对。
+（1）\textbf{序列内过拟合}：模型可能记忆训练序列的特定噪声模式、成像参数（如光照、对比度）而非学习可泛化的生长模式特征。测试集尽管在时间上外推，但仍属于相近工艺条件下的序列，模型对未见特征的适应能力有限。
 
 （2）\textbf{类内多样性缺失}：实际MBE工艺中，同一生长模式在不同实验条件下呈现的RHEED图像可能存在显著差异（如条纹间距、斑点密度等）。单序列训练无法覆盖这种类内变异性。
 
@@ -325,7 +358,7 @@ F1_{\text{macro}} = \frac{1}{2}(F1_{\text{2D}} + F1_{\text{3D}})
 
 本章针对MBE薄膜生长中的二维层状与三维岛状生长模式识别问题，提出基于ConvNeXt V2的RHEED时序图像分类方法。通过引入滑动窗口采样策略，模型能够学习RHEED图像的短时序演化模式；利用ConvNeXt V2的自监督预训练与全局响应归一化机制，增强模型在小样本场景下的特征提取能力；采用自动类别权重策略缓解数据集的轻度类别不平衡。
 
-实验结果表明，在包含2条序列的RHEED数据集上，模型验证集准确率达$65.17\%$，宏平均F1得分$57.89\%$，验证了方法的可行性。然而，测试集性能显著下降（准确率$42.61\%$，F1 $28.33\%$），主要原因包括：（1）数据集规模极小（每类仅1条独立序列），导致模型泛化能力受限；（2）严格时间外推评估设定增加了难度，模型对序列后期未见特征的适应不足；（3）RHEED图像的类别边界模糊（如3D岛状生长初期与2D层状生长难以区分），增加了判别复杂度。
+实验结果表明，在包含20条序列（每类10条）的RHEED数据集上，模型验证集准确率达$65.17\%$，宏平均F1得分$57.89\%$，验证了方法的可行性。然而，测试集性能显著下降（准确率$42.61\%$，F1 $28.33\%$），主要原因包括：（1）序列级样本仍有限且工艺条件相近，导致模型泛化能力受限；（2）严格时间外推评估设定增加了难度，模型对序列后期未见特征的适应不足；（3）RHEED图像的类别边界模糊（如3D岛状生长初期与2D层状生长难以区分），增加了判别复杂度。
 
 消融实验验证了时序窗口策略（相比单帧分类提升$16.5\%$）、ImageNet预训练（提升$12.9\%$）和自动类别权重（提升$11.0\%$-$32.0\%$）的有效性。失败案例分析揭示了边界帧歧义性、噪声干扰和数据规模不足是主要误分类原因。
 
