@@ -44,12 +44,12 @@ else
   if [[ "$ans" =~ ^[yY]([eE][sS])?$ ]]; then
     epochs_val=1
   else
-    epochs_val=${EPOCHS:-80}
+    epochs_val=${EPOCHS:-50}
   fi
 fi
 
 # 可通过环境变量覆盖
-MODEL=${MODEL:-"convnextv2_tiny"}
+MODEL=${MODEL:-""}
 BATCH_SIZE=${BATCH_SIZE:-32}
 EPOCHS=$epochs_val
 INPUT_SIZE=${INPUT_SIZE:-224}
@@ -61,19 +61,40 @@ USE_AMP=${USE_AMP:-true}
 LABEL_SMOOTHING=${LABEL_SMOOTHING:-0.0}
 DEBUG_PRED_STATS=${DEBUG_PRED_STATS:-true}
 
+# 交互式选择模型（若 MODEL 已显式设置则跳过）
+if [ -z "$MODEL" ] && [ -t 0 ]; then
+  echo "请选择模型："
+  echo "  [1] convnextv2_atto"
+  echo "  [2] mobilevit_xxs"
+  echo "  [3] convnext_zepto_rms"
+  echo "  [4] poolformerv2_s12"
+  read -p "请输入选项编号（默认1）：" model_choice
+  model_choice=${model_choice:-1}
+  case "$model_choice" in
+    1) MODEL="convnextv2_atto" ;;
+    2) MODEL="mobilevit_xxs" ;;
+    3) MODEL="convnext_zepto_rms" ;;
+    4) MODEL="poolformerv2_s12" ;;
+    *) echo "无效选项: $model_choice，使用默认模型 convnextv2_atto"; MODEL="convnextv2_atto" ;;
+  esac
+fi
+
+# 兜底默认模型
+MODEL=${MODEL:-"convnextv2_atto"}
+
 # 统一使用序列模式；WINDOW_SIZE=1 等价于单帧训练
 SEQUENCE_MODE=true
-SEQUENCE_ROOT=${SEQUENCE_ROOT:-"rheed_images"}
-WINDOW_SIZE=${WINDOW_SIZE:-10}
-WINDOW_STRIDE=${WINDOW_STRIDE:-2}
-LR=${LR:-1e-4}
+SEQUENCE_ROOT=${SEQUENCE_ROOT:-"rheed_images_png_0226"}
+WINDOW_SIZE=${WINDOW_SIZE:-1}
+WINDOW_STRIDE=${WINDOW_STRIDE:-1}
+LR=${LR:-3e-5}
 WEIGHT_DECAY=${WEIGHT_DECAY:-0.05}
 AUTO_CLASS_WEIGHTS=${AUTO_CLASS_WEIGHTS:-true}
 BALANCED_SAMPLER=${BALANCED_SAMPLER:-false}
 PRETRAINED=${PRETRAINED:-true}
 
 # 序列数据路径
-SPLIT_RATIO=${SPLIT_RATIO:-"0.7,0.2,0.1"}
+SPLIT_RATIO=${SPLIT_RATIO:-"0.7,0.1,0.2"}
 STRICT_TIME_SPLIT=${STRICT_TIME_SPLIT:-true}
 SEQ_TRAIN=${SEQ_TRAIN:-"seq_001,seq_002,seq_003,seq_004,seq_005,seq_006,seq_007"}
 SEQ_VAL=${SEQ_VAL:-"seq_008"}
@@ -81,11 +102,59 @@ SEQ_TEST=${SEQ_TEST:-"seq_009,seq_010"}
 
 # 预训练权重选择
 # PRETRAIN_SOURCE: imagenet | ssl | none
+# 默认使用 ImageNet 预训练；也可在运行时交互选择 SSL-80/120/150 初始化
 PRETRAIN_SOURCE=${PRETRAIN_SOURCE:-"imagenet"}
 PRETRAINED_WEIGHTS=${PRETRAINED_WEIGHTS:-""}
 
+# 你的 SSL 预训练权重（按轮数）
+SSL80_OUTPUT_DIR=${SSL80_OUTPUT_DIR:-"outputs/pretrain_ssl_20260223_132829_80"}
+SSL120_OUTPUT_DIR=${SSL120_OUTPUT_DIR:-"outputs/pretrain_ssl_20260223_150207_120"}
+SSL150_OUTPUT_DIR=${SSL150_OUTPUT_DIR:-"outputs/pretrain_ssl_20260223_205736_150"}
+
+SSL80_WEIGHTS=${SSL80_WEIGHTS:-"${SSL80_OUTPUT_DIR}/checkpoint_last.pth"}
+SSL120_WEIGHTS=${SSL120_WEIGHTS:-"${SSL120_OUTPUT_DIR}/checkpoint_last.pth"}
+SSL150_WEIGHTS=${SSL150_WEIGHTS:-"${SSL150_OUTPUT_DIR}/checkpoint_last.pth"}
+
 EXTRA_ARGS=()
 
+# 若用户已显式设置 PRETRAIN_SOURCE/PRETRAINED_WEIGHTS，则不再询问（方便高级用法/脚本化）
+if [ -z "$PRETRAINED_WEIGHTS" ] && [ "$PRETRAIN_SOURCE" = "imagenet" ] && [ -t 0 ]; then
+  echo "请选择微调初始化权重来源："
+  echo "  [1] ImageNet 预训练 (默认)"
+  echo "  [2] SSL 预训练 (80 epochs)"
+  echo "  [3] SSL 预训练 (120 epochs)"
+  echo "  [4] SSL 预训练 (150 epochs)"
+  echo "  [5] 不使用预训练 (none)"
+  read -p "请输入选项[1-5]（默认1）：" init_choice
+  init_choice=${init_choice:-1}
+
+  case "$init_choice" in
+    1)
+      PRETRAIN_SOURCE="imagenet"
+      ;;
+    2)
+      PRETRAIN_SOURCE="ssl"
+      PRETRAINED_WEIGHTS="$SSL80_WEIGHTS"
+      ;;
+    3)
+      PRETRAIN_SOURCE="ssl"
+      PRETRAINED_WEIGHTS="$SSL120_WEIGHTS"
+      ;;
+    4)
+      PRETRAIN_SOURCE="ssl"
+      PRETRAINED_WEIGHTS="$SSL150_WEIGHTS"
+      ;;
+    5)
+      PRETRAIN_SOURCE="none"
+      ;;
+    *)
+      echo "无效选项: $init_choice（可选: 1-5）"
+      exit 1
+      ;;
+  esac
+fi
+
+# 兼容：如果提供了 PRETRAINED_WEIGHTS 但没改 PRETRAIN_SOURCE，则自动切到 ssl
 if [ -n "$PRETRAINED_WEIGHTS" ] && [ "$PRETRAIN_SOURCE" = "imagenet" ]; then
   PRETRAIN_SOURCE="ssl"
   echo "检测到PRETRAINED_WEIGHTS，自动切换为 PRETRAIN_SOURCE=ssl"
@@ -114,7 +183,29 @@ esac
 
 echo "SEQUENCE_MODE=true WINDOW_SIZE=$WINDOW_SIZE STRIDE=$WINDOW_STRIDE LR=$LR WD=$WEIGHT_DECAY"
 
-OUTPUT_DIR="outputs/finetune_timm_$(date +%Y%m%d_%H%M%S)"
+PRETRAIN_TAG="$EPOCHS"
+case "$PRETRAIN_SOURCE" in
+  imagenet)
+    PRETRAIN_TAG="imagenet"
+    ;;
+  none)
+    PRETRAIN_TAG="none"
+    ;;
+  ssl)
+    if [ "$PRETRAINED_WEIGHTS" = "$SSL80_WEIGHTS" ]; then
+      PRETRAIN_TAG="80"
+    elif [ "$PRETRAINED_WEIGHTS" = "$SSL120_WEIGHTS" ]; then
+      PRETRAIN_TAG="120"
+    elif [ "$PRETRAINED_WEIGHTS" = "$SSL150_WEIGHTS" ]; then
+      PRETRAIN_TAG="150"
+    fi
+    ;;
+  *)
+    PRETRAIN_TAG="$EPOCHS"
+    ;;
+esac
+
+OUTPUT_DIR="outputs/finetune_timm_$(date +%Y%m%d_%H%M%S)_${MODEL}_${PRETRAIN_TAG}"
 
 ARGS=(
   --model "$MODEL"

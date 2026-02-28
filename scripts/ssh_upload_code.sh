@@ -12,6 +12,7 @@ PROJECT_NAME="$(basename "$PROJECT_ROOT")"
 echo "上传代码文件..."
 
 rsync -az "$PROJECT_ROOT/src/" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/$PROJECT_NAME/src/"
+rsync -az "$PROJECT_ROOT/tools/" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/$PROJECT_NAME/tools/"
 rsync -az "$PROJECT_ROOT/scripts/" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/$PROJECT_NAME/scripts/"
 rsync -az "$PROJECT_ROOT/docs/" "$SSH_USER@$SSH_HOST:$REMOTE_DIR/$PROJECT_NAME/docs/"
 

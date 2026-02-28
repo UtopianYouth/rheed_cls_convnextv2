@@ -56,27 +56,8 @@ def _to_rgb(img):
         return img
 
 
-def _linear_normalize(arr):
-    arr = arr.astype(np.float32)
-    vmin = float(arr.min())
-    vmax = float(arr.max())
-    if vmax <= vmin:
-        return np.zeros_like(arr, dtype=np.uint8)
-    norm = (arr - vmin) / (vmax - vmin)
-    norm = np.clip(norm * 255.0, 0, 255).astype(np.uint8)
-    return norm
-
-
 def _load_image(path):
     with Image.open(path) as img:
-        suffix = Path(path).suffix.lower()
-        if suffix in (".tif", ".tiff"):
-            img = img.convert("I")
-            arr = np.array(img)
-            arr = _linear_normalize(arr)
-            img = Image.fromarray(arr, mode="L")
-            img = _to_rgb(img)
-            return img
         img = _to_rgb(img)
         return img
 
@@ -102,11 +83,11 @@ def summarize_dataset_stats(dataset, class_to_idx):
     print("=" * 40)
 
 
-def _list_tiff_files(dir_path):
+def _list_image_files(dir_path):
     files = []
     for name in os.listdir(dir_path):
         lower = name.lower()
-        if lower.endswith((".tiff", ".tif", ".png", ".jpg", ".jpeg")):
+        if lower.endswith(".png"):
             files.append(os.path.join(dir_path, name))
     files.sort()
     return files
@@ -283,9 +264,9 @@ def build_sequence_samples(
         missing = []
         for seq in seq_dirs:
             seq_dir = os.path.join(class_dir, seq)
-            frames = _list_tiff_files(seq_dir)
+            frames = _list_image_files(seq_dir)
             if not frames:
-                print(f"[WARN] 序列 {seq_dir} 下未找到tiff文件")
+                print(f"[WARN] 序列 {seq_dir} 下未找到png文件")
                 continue
 
             label = class_to_idx[class_name]
@@ -562,6 +543,7 @@ class FocalLoss(nn.Module):
 
 
 def _accuracy(output, target):
+    """兼容旧代码：返回该 batch 的 acc1（百分比）。"""
     with torch.no_grad():
         pred = output.argmax(dim=1)
         acc = (pred == target).float().mean().item() * 100.0
@@ -571,9 +553,11 @@ def _accuracy(output, target):
 def train_one_epoch(model, loader, optimizer, criterion, device, use_amp):
     model.train()
     scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
+
+    # 用“按样本计数”的方式统计，避免“按 batch 平均”带来的歧义
     total_loss = 0.0
-    total_acc = 0.0
-    num_batches = 0
+    total_correct = 0
+    total_samples = 0
 
     for images, targets in loader:
         images = images.to(device, non_blocking=True)
@@ -593,21 +577,30 @@ def train_one_epoch(model, loader, optimizer, criterion, device, use_amp):
             loss.backward()
             optimizer.step()
 
-        total_loss += loss.item()
-        total_acc += _accuracy(outputs, targets)
-        num_batches += 1
+        batch_size = targets.size(0)
+        total_loss += loss.item() * batch_size
+
+        with torch.no_grad():
+            preds = outputs.argmax(dim=1)
+            total_correct += int((preds == targets).sum().item())
+            total_samples += int(batch_size)
+
+    avg_loss = total_loss / max(total_samples, 1)
+    acc1 = (total_correct / max(total_samples, 1)) * 100.0
 
     return {
-        "loss": total_loss / max(num_batches, 1),
-        "acc1": total_acc / max(num_batches, 1),
+        "loss": float(avg_loss),
+        "acc1": float(acc1),
     }
 
 
-def evaluate(model, loader, criterion, device, use_amp, split_name="val", debug_pred_stats=False):
+def evaluate(model, loader, criterion, device, use_amp, split_name="val", debug_pred_stats=False, epoch=None):
     model.eval()
+
+    # 用“按样本计数”的方式统计，避免“按 batch 平均”带来的歧义
     total_loss = 0.0
-    total_acc = 0.0
-    num_batches = 0
+    total_correct = 0
+    total_samples = 0
 
     all_preds = []
     all_targets = []
@@ -627,11 +620,14 @@ def evaluate(model, loader, criterion, device, use_amp, split_name="val", debug_
                 outputs = model(images)
                 loss = criterion(outputs, targets)
 
-            total_loss += loss.item()
-            total_acc += _accuracy(outputs, targets)
-            num_batches += 1
+            batch_size = targets.size(0)
+            total_loss += loss.item() * batch_size
 
-            preds = outputs.argmax(dim=1).detach().cpu().tolist()
+            preds_t = outputs.argmax(dim=1)
+            total_correct += int((preds_t == targets).sum().item())
+            total_samples += int(batch_size)
+
+            preds = preds_t.detach().cpu().tolist()
             tars = targets.detach().cpu().tolist()
             all_preds.extend(preds)
             all_targets.extend(tars)
@@ -649,19 +645,44 @@ def evaluate(model, loader, criterion, device, use_amp, split_name="val", debug_
                     diffs = (top2[:, 0] - top2[:, 1]).tolist()
                 all_logit_diffs.extend(diffs)
 
+    avg_loss = total_loss / max(total_samples, 1)
+    acc1 = (total_correct / max(total_samples, 1)) * 100.0
+
     stats = {
-        "loss": total_loss / max(num_batches, 1),
-        "acc1": total_acc / max(num_batches, 1),
+        "loss": float(avg_loss),
+        "acc1": float(acc1),
     }
+
+    # 额外一致性校验（不依赖sklearn）：acc1 必须与 all_preds/all_targets 完全一致
+    if len(all_targets) > 0:
+        acc_check = (sum(int(p == t) for p, t in zip(all_preds, all_targets)) / len(all_targets)) * 100.0
+        if abs(acc_check - stats["acc1"]) > 1e-6:
+            if epoch is None:
+                tag = split_name
+            elif isinstance(epoch, int):
+                tag = f"{split_name}@{epoch:03d}"
+            else:
+                tag = f"{split_name}@{epoch}"
+            print(
+                f"[WARN] {tag} acc1不一致: stats.acc1={stats['acc1']:.6f} vs list_check={acc_check:.6f}. "
+                "可能是日志输出错位/混跑/代码被修改导致。",
+                flush=True,
+            )
 
     if _HAS_SKLEARN:
         stats["f1_macro"] = float(f1_score(all_targets, all_preds, average="macro")) * 100.0
 
-        # debug: print prediction distribution
+        # debug: print prediction distribution（带epoch标识，避免日志对不上）
         from collections import Counter
+        if epoch is None:
+            tag = split_name
+        elif isinstance(epoch, int):
+            tag = f"{split_name}@{epoch:03d}"
+        else:
+            tag = f"{split_name}@{epoch}"
         pred_counts = Counter(all_preds)
-        print(f"[DEBUG] {split_name} 预测类别分布: {dict(pred_counts)}")
-        print(f"[DEBUG] {split_name} 真实类别分布: {dict(Counter(all_targets))}")
+        print(f"[DEBUG] {tag} 预测类别分布: {dict(pred_counts)}", flush=True)
+        print(f"[DEBUG] {tag} 真实类别分布: {dict(Counter(all_targets))}", flush=True)
         stats["confusion_matrix"] = confusion_matrix(all_targets, all_preds).tolist()
 
     if debug_pred_stats:
@@ -840,7 +861,7 @@ def main():
         )
         val_stats = evaluate(
             model, val_loader, criterion, device, args.use_amp,
-            split_name="val", debug_pred_stats=args.debug_pred_stats
+            split_name="val", debug_pred_stats=args.debug_pred_stats, epoch=epoch
         )
 
         metric_value = val_stats["acc1"] if args.save_best_metric == "acc1" else val_stats.get("f1_macro", 0.0)
@@ -877,7 +898,7 @@ def main():
     if test_loader is not None:
         test_stats = evaluate(
             model, test_loader, criterion, device, args.use_amp,
-            split_name="test", debug_pred_stats=args.debug_pred_stats
+            split_name="test", debug_pred_stats=args.debug_pred_stats, epoch="test"
         )
         print(f"Test acc1={test_stats['acc1']:.2f} f1={test_stats.get('f1_macro', 0.0):.2f}")
         with (output_dir / "test_metrics.json").open("w", encoding="utf-8") as f:

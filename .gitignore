@@ -24,10 +24,7 @@ Thumbs.db
 .ruff_cache/
 
 # ---- Data (do not version large datasets) ----
-/data_rheed/
-/data_finetune/
-/rheed_images/
-/rheed_images_png/
+/rheed_images*
 
 # If you have small helper scripts under data_processed, keep them:
 !data_processed/**/*.py
@@ -50,6 +47,7 @@ Thumbs.db
 
 # ---- Training artifacts / outputs ----
 /outputs/
+/outputs_*/
 *.pth
 *.pt
 *.ckpt

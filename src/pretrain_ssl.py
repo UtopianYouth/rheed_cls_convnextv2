@@ -165,6 +165,41 @@ def main():
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    # 参数快照（写入 log.txt，便于复现实验）
+    snapshot = {
+        "model": args.model,
+        "sequence_root": args.sequence_root,
+        "window_size": args.window_size,
+        "window_stride": args.window_stride,
+        "split_ratio": args.split_ratio,
+        "strict_time_split": args.strict_time_split,
+        "seq_train": args.seq_train,
+        "seq_val": args.seq_val,
+        "seq_test": args.seq_test,
+        "input_size": args.input_size,
+        "batch_size": args.batch_size,
+        "epochs": args.epochs,
+        "lr": args.lr,
+        "weight_decay": args.weight_decay,
+        "temperature": args.temperature,
+        "aa": args.aa,
+        "color_jitter": args.color_jitter,
+        "reprob": args.reprob,
+        "recount": args.recount,
+        "remode": args.remode,
+        "train_interpolation": args.train_interpolation,
+        "proj_dim": args.proj_dim,
+        "proj_hidden_dim": args.proj_hidden_dim,
+        "use_amp": args.use_amp,
+        "pretrained": args.pretrained,
+        "pretrained_weights": args.pretrained_weights,
+        "num_workers": args.num_workers,
+        "pin_memory": args.pin_memory,
+        "persistent_workers": args.persistent_workers,
+        "prefetch_factor": args.prefetch_factor,
+        "seed": args.seed,
+    }
+
     if not args.sequence_root or not os.path.isdir(args.sequence_root):
         raise RuntimeError("--sequence_root 必须是有效目录")
 
@@ -236,6 +271,9 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     log_path = output_dir / "log.txt"
+
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"snapshot": snapshot}, ensure_ascii=False) + "\n")
 
     print(f"Start pretraining for {args.epochs} epochs")
     start_time = time.time()

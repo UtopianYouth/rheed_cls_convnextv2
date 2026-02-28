@@ -1,19 +1,19 @@
 # Fdb version 4
-["bibtex master_pang"] 1771854633.43468 "master_pang.aux" "master_pang.bbl" "master_pang" 1771855564.65152 0
+["bibtex master_pang"] 1772176902.07407 "master_pang.aux" "master_pang.bbl" "master_pang" 1772176904.57453 0
   "./gbt7714-2005.bst" 1770855580 139313 c80c97e9a0466386ca5ac4b5fc6c841b ""
-  "./ref_paper.bib" 1770896654.81247 5518 6cd2cd57b44ba8f162a3599f15ce8b2d ""
-  "master_pang.aux" 1771855561.13951 10783 5791b1cad5ce913e087592bbbd7c5555 "xelatex"
+  "./ref_paper.bib" 1772095971.35963 7552 739272bd1a7f4bf5940d83a12de606d6 ""
+  "master_pang.aux" 1772176903.67032 8363 c2efd6514ecbc7a578334f48b25ccfcc "xelatex"
   (generated)
   "master_pang.bbl"
   "master_pang.blg"
   (rewritten before read)
-["xdvipdfmx"] 1771855561.52068 "master_pang.xdv" "master_pang.pdf" "master_pang" 1771855564.65355 0
-  "master_pang.xdv" 1771855561.14385 605248 653429deb36e8ed9ee1b0a142e2e247f "xelatex"
+["xdvipdfmx"] 1772176904.01975 "master_pang.xdv" "master_pang.pdf" "master_pang" 1772176904.5765 0
+  "master_pang.xdv" 1772176903.67032 492884 87ad86aa2c30db0cc6506afddc239855 "xelatex"
   (generated)
   "master_pang.pdf"
   (rewritten before read)
-["xelatex"] 1771855559.00328 "/home/utopianyouth/rheed_cls_convnextv2/docs/my_graduate_paper/master_pang.tex" "master_pang.xdv" "master_pang" 1771855564.65172 0
-  "/home/utopianyouth/rheed_cls_convnextv2/docs/my_graduate_paper/master_pang.tex" 1771854467.07198 7202 75ac64ce0c82e13a2ce8560f73d22bc6 ""
+["xelatex"] 1772176902.20764 "/home/utopianyouth/rheed_cls_convnextv2/my_graduate_paper/master_pang.tex" "master_pang.xdv" "master_pang" 1772176904.57464 0
+  "/home/utopianyouth/rheed_cls_convnextv2/my_graduate_paper/master_pang.tex" 1771854467.07198 7202 75ac64ce0c82e13a2ce8560f73d22bc6 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/adobe/zapfding/pzdr.tfm" 1136768653 1528 f853c4d1b4e0550255e02831fdc8496f ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmbsy5.tfm" 1246382020 1120 1e8878807317373affa7f7bba4cf2f6a ""
@@ -176,7 +176,7 @@
   "bibspacing.sty" 1770855580 878 95d961d65b21d3fde3aa57c4e7000dfe ""
   "chapter/abstract.tex" 1770855580 7602 0929b90ef3f979fb21b82a014e169a9b ""
   "chapter/cp1.tex" 1770855580 12799 5a5fb646b3899a6a8cc7be33af95447d ""
-  "chapter/cp2.tex" 1771854608.33304 27131 9611c3e4a69b31e8885adb23e661af0c ""
+  "chapter/cp2.tex" 1772175968.96846 12301 7e9e135ed59313c9015369476ebc4177 ""
   "chapter/cp3.tex" 1771661336.13866 5105 a3afaa42ef229395553c13521fec3967 ""
   "chapter/cp4.tex" 1770855580 3429 e3e737751f3a23e93ad193f0a0a9d738 ""
   "chapter/cp5.tex" 1770855580 105 9c40d691ef34ed05185e2ed96cd03a8e ""
@@ -184,17 +184,12 @@
   "chapter/myPapers.tex" 1770855580 983 285b3dd3037b04e97b3f85a02cb8c21e ""
   "chapter/sign_and_ABC.tex" 1770855580 712 72e861a49f676880eef9acaca050ee2c ""
   "chapter/thanks.tex" 1770855580 2250 11e4fa33a1f4c3cf430e7da24a45623b ""
-  "figure/cp2/cp2_fcmae.png" 1770855580 260259 54a82cc676efd7d92b1d33dd834c0321 ""
-  "figure/cp2/cp2_grn.png" 1770855580 51561 0024752cdb8631058dad970400e8b77f ""
-  "figure/cp2/seq001_stats_2d_vs_3d.png" 1771771336.5033 667133 08186adc553252f32e8b3c14ae5b41c9 ""
-  "figure/cp2/ssl_loss_curve_pretrain_ssl_20260223_132829.png" 1771851331.55926 105521 b3ea4c8b189e3991a57439e6ea7278d9 ""
-  "figure/cp2/ssl_loss_curve_pretrain_ssl_20260223_150207.png" 1771851360.69984 104394 698256b951908a3c36efa96afab7bfed ""
   "figure/cp4/cp4_pyraformer.png" 1770855582 136309 00d0b37b17ade6a68954f15fff735abd ""
-  "master_pang.aux" 1771855561.13951 10783 5791b1cad5ce913e087592bbbd7c5555 "xelatex"
-  "master_pang.bbl" 1771854633.59769 6873 44e849b26375038444652be9e296e00b "bibtex master_pang"
-  "master_pang.out" 1771855561.13951 6101 e1cb6797d122315fc9a384c15ce0e56d "xelatex"
+  "master_pang.aux" 1772176903.67032 8363 c2efd6514ecbc7a578334f48b25ccfcc "xelatex"
+  "master_pang.bbl" 1772176902.19939 6145 ba85813f31f6c88f06a86c6f70b7d6a2 "bibtex master_pang"
+  "master_pang.out" 1772176903.67032 5225 ffbc66d74df99e223d437dfb08773c3d "xelatex"
   "master_pang.tex" 1771854467.07198 7202 75ac64ce0c82e13a2ce8560f73d22bc6 ""
-  "master_pang.toc" 1771855561.14385 4594 e24b8f3bad461ea2d6fb21b6256f74a6 "xelatex"
+  "master_pang.toc" 1772176903.67032 3879 1a7e050bc5d74d9fc32fd10a361e58aa "xelatex"
   "slashbox.sty" 1770855580 2685 ce2190dc09125c3010b0dfd2226dd182 ""
   "szu-master.cls" 1771660091.53156 7715 85e8b7758d178766e89df44814e8a529 ""
   (generated)

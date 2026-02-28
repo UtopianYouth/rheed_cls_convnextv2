@@ -25,125 +25,48 @@
 \providecommand{\biburl}[1]{\newline\url{#1}}
 
 \bibitem{c1}
-\bibauthor{KWOEN J\@, ARAKAWA Y}\@. \bibtitle{Classification of reflection
-  high-energy electron diffraction pattern using machine
-  learning}\bibmark{[J]}\@. \bibjournal{Crystal Growth {\&} Design}\@,
-  \bibyear{2020}\@, \bibvolume{20}\bibnumber{(8)}\thinspace{}\textnormal{:
-  }\bibpages{5289\thinspace{}\textnormal{--}\thinspace{}5293}\@.
+\bibauthor{KWOEN J\@, ARAKAWA Y}\@. \bibtitle{Classification of reflection high-energy electron diffraction pattern using machine learning}\bibmark{[J]}\@. \bibjournal{Crystal Growth {\&} Design}\@, \bibyear{2020}\@, \bibvolume{20}\bibnumber{(8)}\thinspace{}\textnormal{: }\bibpages{5289\thinspace{}\textnormal{--}\thinspace{}5293}\@.
 
 \bibitem{c8}
-\bibauthor{KWOEN J\@, ARAKAWA Y}\@. \bibtitle{Multiclass classification of
-  reflection high-energy electron diffraction patterns using deep
-  learning}\bibmark{[J]}\@. \bibjournal{Journal of Crystal Growth}\@,
-  \bibyear{2022}\@, \bibvolume{593}\thinspace{}\textnormal{:
-  }\bibpages{126780}\@.
+\bibauthor{KWOEN J\@, ARAKAWA Y}\@. \bibtitle{Multiclass classification of reflection high-energy electron diffraction patterns using deep learning}\bibmark{[J]}\@. \bibjournal{Journal of Crystal Growth}\@, \bibyear{2022}\@, \bibvolume{593}\thinspace{}\textnormal{: }\bibpages{126780}\@.
 
 \bibitem{c9}
-\bibauthor{YOSHINARI A\@, IWASAKI Y\@, KOTSUGI M, et~al}\@.
-  \bibtitle{Skill-Agnostic analysis of reflection high-energy electron
-  diffraction patterns for Si (111) surface superstructures using machine
-  learning}\bibmark{[J]}\@. \bibjournal{Science and Technology of Advanced
-  Materials: Methods}\@, \bibyear{2022}\@,
-  \bibvolume{2}\bibnumber{(1)}\thinspace{}\textnormal{:
-  }\bibpages{162\thinspace{}\textnormal{--}\thinspace{}174}\@.
+\bibauthor{YOSHINARI A\@, IWASAKI Y\@, KOTSUGI M, et~al}\@. \bibtitle{Skill-Agnostic analysis of reflection high-energy electron diffraction patterns for Si (111) surface superstructures using machine learning}\bibmark{[J]}\@. \bibjournal{Science and Technology of Advanced Materials: Methods}\@, \bibyear{2022}\@, \bibvolume{2}\bibnumber{(1)}\thinspace{}\textnormal{: }\bibpages{162\thinspace{}\textnormal{--}\thinspace{}174}\@.
 
 \bibitem{c2}
-\bibauthor{WOO S\@, DEBNATH S\@, HU R, et~al}\@. \bibtitle{Convnext v2:
-  Co-designing and scaling convnets with masked autoencoders}\bibmark{[C]}
-  //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on
-  Computer Vision and Pattern Recognition}\@.
-  \bibyear{2023}\thinspace{}\textnormal{:
-  }\bibpages{16133\thinspace{}\textnormal{--}\thinspace{}16142}\@.
+\bibauthor{WOO S\@, DEBNATH S\@, HU R, et~al}\@. \bibtitle{Convnext v2: Co-designing and scaling convnets with masked autoencoders}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition}\@. \bibyear{2023}\thinspace{}\textnormal{: }\bibpages{16133\thinspace{}\textnormal{--}\thinspace{}16142}\@.
 
 \bibitem{c3}
-\bibauthor{GIRSHICK R\@, DONAHUE J\@, DARRELL T, et~al}\@. \bibtitle{Rich
-  feature hierarchies for accurate object detection and semantic
-  segmentation}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the
-  IEEE Conference on Computer Vision and Pattern Recognition}\@.
-  \bibyear{2014}\thinspace{}\textnormal{:
-  }\bibpages{580\thinspace{}\textnormal{--}\thinspace{}587}\@.
+\bibauthor{GIRSHICK R\@, DONAHUE J\@, DARRELL T, et~al}\@. \bibtitle{Rich feature hierarchies for accurate object detection and semantic segmentation}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition}\@. \bibyear{2014}\thinspace{}\textnormal{: }\bibpages{580\thinspace{}\textnormal{--}\thinspace{}587}\@.
 
 \bibitem{c4}
-\bibauthor{SERMANET P\@, EIGEN D\@, ZHANG X, et~al}\@. \bibtitle{Overfeat:
-  Integrated recognition, localization and detection using convolutional
-  networks}\bibmark{[J]}\@. \bibjournal{arXiv preprint arXiv:1312.6229}\@,
-  \bibyear{2013}\@.
+\bibauthor{SERMANET P\@, EIGEN D\@, ZHANG X, et~al}\@. \bibtitle{Overfeat: Integrated recognition, localization and detection using convolutional networks}\bibmark{[J]}\@. \bibjournal{arXiv preprint arXiv:1312.6229}\@, \bibyear{2013}\@.
 
 \bibitem{c5}
-\bibauthor{GIRSHICK R}\@. \bibtitle{Fast r-cnn}\bibmark{[C]}
-  //\thinspace{}\bibbooktitle{Proceedings of the IEEE International Conference
-  on Computer Vision}\@. \bibyear{2015}\thinspace{}\textnormal{:
-  }\bibpages{1440\thinspace{}\textnormal{--}\thinspace{}1448}\@.
+\bibauthor{GIRSHICK R}\@. \bibtitle{Fast r-cnn}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE International Conference on Computer Vision}\@. \bibyear{2015}\thinspace{}\textnormal{: }\bibpages{1440\thinspace{}\textnormal{--}\thinspace{}1448}\@.
 
 \bibitem{c6}
-\bibauthor{REDMON J\@, DIVVALA S\@, GIRSHICK R, et~al}\@. \bibtitle{You only
-  look once: Unified, real-time object detection}\bibmark{[C]}
-  //\thinspace{}\bibbooktitle{Proceedings of the IEEE Conference on Computer
-  Vision and Pattern Recognition}\@. \bibyear{2016}\thinspace{}\textnormal{:
-  }\bibpages{779\thinspace{}\textnormal{--}\thinspace{}788}\@.
+\bibauthor{REDMON J\@, DIVVALA S\@, GIRSHICK R, et~al}\@. \bibtitle{You only look once: Unified, real-time object detection}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition}\@. \bibyear{2016}\thinspace{}\textnormal{: }\bibpages{779\thinspace{}\textnormal{--}\thinspace{}788}\@.
 
 \bibitem{c7}
-\bibauthor{CHEN S\@, SUN P\@, SONG Y, et~al}\@. \bibtitle{Diffusiondet:
-  Diffusion model for object detection}\bibmark{[C]}
-  //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF International
-  Conference on Computer Vision}\@. \bibyear{2023}\thinspace{}\textnormal{:
-  }\bibpages{19830\thinspace{}\textnormal{--}\thinspace{}19843}\@.
+\bibauthor{CHEN S\@, SUN P\@, SONG Y, et~al}\@. \bibtitle{Diffusiondet: Diffusion model for object detection}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF International Conference on Computer Vision}\@. \bibyear{2023}\thinspace{}\textnormal{: }\bibpages{19830\thinspace{}\textnormal{--}\thinspace{}19843}\@.
 
 \bibitem{c10}
-\bibauthor{GEMPERLINE P~T\@, PAUDEL R\@, VASUDEVAN R~K, et~al}\@.
-  \bibtitle{Improvement of data analytics techniques in reflection high-energy
-  electron diffraction to enable machine learning}\bibmark{[J]}\@.
-  \bibjournal{Journal of Vacuum Science {\&} Technology A}\@, \bibyear{2025}\@,
-  \bibvolume{43}\bibnumber{(3)}\@.
+\bibauthor{GEMPERLINE P~T\@, PAUDEL R\@, VASUDEVAN R~K, et~al}\@. \bibtitle{Improvement of data analytics techniques in reflection high-energy electron diffraction to enable machine learning}\bibmark{[J]}\@. \bibjournal{Journal of Vacuum Science {\&} Technology A}\@, \bibyear{2025}\@, \bibvolume{43}\bibnumber{(3)}\@.
 
 \bibitem{c11}
-\bibauthor{SHEN C\@, ZHAN W\@, XIN K, et~al}\@.
-  \bibtitle{Machine-learning-assisted and real-time-feedback-controlled growth
-  of InAs/GaAs quantum dots}\bibmark{[J]}\@. \bibjournal{Nature
-  Communications}\@, \bibyear{2024}\@,
-  \bibvolume{15}\bibnumber{(1)}\thinspace{}\textnormal{: }\bibpages{2724}\@.
+\bibauthor{SHEN C\@, ZHAN W\@, XIN K, et~al}\@. \bibtitle{Machine-learning-assisted and real-time-feedback-controlled growth of InAs/GaAs quantum dots}\bibmark{[J]}\@. \bibjournal{Nature Communications}\@, \bibyear{2024}\@, \bibvolume{15}\bibnumber{(1)}\thinspace{}\textnormal{: }\bibpages{2724}\@.
 
 \bibitem{c12}
-\bibauthor{KHAIREH-WALIEH A\@, ARNOULT A\@, PLISSARD S, et~al}\@.
-  \bibtitle{Monitoring MBE substrate deoxidation via RHEED image-sequence
-  analysis by deep learning}\bibmark{[J]}\@. \bibjournal{Crystal Growth {\&}
-  Design}\@, \bibyear{2023}\@,
-  \bibvolume{23}\bibnumber{(2)}\thinspace{}\textnormal{:
-  }\bibpages{892\thinspace{}\textnormal{--}\thinspace{}898}\@.
+\bibauthor{KHAIREH-WALIEH A\@, ARNOULT A\@, PLISSARD S, et~al}\@. \bibtitle{Monitoring MBE substrate deoxidation via RHEED image-sequence analysis by deep learning}\bibmark{[J]}\@. \bibjournal{Crystal Growth {\&} Design}\@, \bibyear{2023}\@, \bibvolume{23}\bibnumber{(2)}\thinspace{}\textnormal{: }\bibpages{892\thinspace{}\textnormal{--}\thinspace{}898}\@.
 
 \bibitem{c13}
-\bibauthor{SHEN C\@, ZHAN W\@, TANG J, et~al}\@. \bibtitle{Universal
-  deoxidation of semiconductor substrates assisted by machine learning and
-  real-time feedback control}\bibmark{[J]}\@. \bibjournal{ACS Applied Materials
-  {\&} Interfaces}\@, \bibyear{2024}\@,
-  \bibvolume{16}\bibnumber{(14)}\thinspace{}\textnormal{:
-  }\bibpages{18213\thinspace{}\textnormal{--}\thinspace{}18221}\@.
+\bibauthor{SHEN C\@, ZHAN W\@, TANG J, et~al}\@. \bibtitle{Universal deoxidation of semiconductor substrates assisted by machine learning and real-time feedback control}\bibmark{[J]}\@. \bibjournal{ACS Applied Materials {\&} Interfaces}\@, \bibyear{2024}\@, \bibvolume{16}\bibnumber{(14)}\thinspace{}\textnormal{: }\bibpages{18213\thinspace{}\textnormal{--}\thinspace{}18221}\@.
 
 \bibitem{c14}
-\bibauthor{STRANSKI I~N\@, KRASTANOV L}\@. \bibtitle{Transition from
-  two-dimensional to three-dimensional growth in strained heteroepitaxy: InAs
-  on GaAs}\bibmark{[J]}\@. \bibjournal{Physical Review Letters}\@,
-  \bibyear{1991}\@, \bibvolume{67}\bibnumber{(23)}\thinspace{}\textnormal{:
-  }\bibpages{3696\thinspace{}\textnormal{--}\thinspace{}3699}\@.
+\bibauthor{STRANSKI I~N\@, KRASTANOV L}\@. \bibtitle{Transition from two-dimensional to three-dimensional growth in strained heteroepitaxy: InAs on GaAs}\bibmark{[J]}\@. \bibjournal{Physical Review Letters}\@, \bibyear{1991}\@, \bibvolume{67}\bibnumber{(23)}\thinspace{}\textnormal{: }\bibpages{3696\thinspace{}\textnormal{--}\thinspace{}3699}\@.
 
 \bibitem{c15}
-\bibauthor{ARTHUR J~R}\@. \bibtitle{Real-time monitoring and control of
-  epitaxial growth using reflection high-energy electron
-  diffraction}\bibmark{[J]}\@. \bibjournal{Surface Science}\@,
-  \bibyear{2002}\@, \bibvolume{500}\bibnumber{(1-3)}\thinspace{}\textnormal{:
-  }\bibpages{189\thinspace{}\textnormal{--}\thinspace{}217}\@.
-
-\bibitem{c16}
-\bibauthor{LIM B\@, ZOHREN S}\@. \bibtitle{Time series forecasting with deep
-  learning: A survey}\bibmark{[J]}\@. \bibjournal{Philosophical Transactions of
-  the Royal Society A}\@, \bibyear{2021}\@,
-  \bibvolume{379}\bibnumber{(2194)}\thinspace{}\textnormal{:
-  }\bibpages{20200209}\@.
-
-\bibitem{c17}
-\bibauthor{WANG Y\@, YAO Q\@, KWOK J~T, et~al}\@. \bibtitle{A survey on
-  few-shot learning}\bibmark{[J]}\@. \bibjournal{ACM Computing Surveys}\@,
-  \bibyear{2020}\@, \bibvolume{53}\bibnumber{(3)}\thinspace{}\textnormal{:
-  }\bibpages{1\thinspace{}\textnormal{--}\thinspace{}34}\@.
+\bibauthor{ARTHUR J~R}\@. \bibtitle{Real-time monitoring and control of epitaxial growth using reflection high-energy electron diffraction}\bibmark{[J]}\@. \bibjournal{Surface Science}\@, \bibyear{2002}\@, \bibvolume{500}\bibnumber{(1-3)}\thinspace{}\textnormal{: }\bibpages{189\thinspace{}\textnormal{--}\thinspace{}217}\@.
 
 \end{thebibliography}

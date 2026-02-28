@@ -32,20 +32,16 @@ if command -v nvidia-smi &> /dev/null; then
   echo "使用GPU: $CUDA_VISIBLE_DEVICES (单卡)"
 fi
 
-# 快速测试交互（默认不进入测试模式）
-if [ -n "${QUICK_TEST:-}" ]; then
-  epochs_val=1
+# 训练轮数交互（默认80）
+if [ -n "${EPOCHS:-}" ]; then
+  epochs_val="$EPOCHS"
 else
-  read -p "是否进行快速测试（仅1个epoch）？[y/N]：" ans
-  if [[ "$ans" =~ ^[yY]([eE][sS])?$ ]]; then
-    epochs_val=1
-  else
-    epochs_val=${EPOCHS:-80}
-  fi
+  read -p "请输入训练epoch数（默认80）：" epochs_input
+  epochs_val=${epochs_input:-80}
 fi
 
 # 可通过环境变量覆盖
-MODEL=${MODEL:-"convnextv2_tiny"}
+MODEL=${MODEL:-"convnextv2_nano"}
 BATCH_SIZE=${BATCH_SIZE:-64}
 EPOCHS=$epochs_val
 LR=${LR:-3e-4}
@@ -62,14 +58,14 @@ COLOR_JITTER=${COLOR_JITTER:-0.0}
 REPROB=${REPROB:-0.0}
 
 # 序列数据路径
-SEQUENCE_ROOT=${SEQUENCE_ROOT:-"rheed_images"}
+SEQUENCE_ROOT=${SEQUENCE_ROOT:-"rheed_images_png_0226"}
 WINDOW_SIZE=${WINDOW_SIZE:-10}
 WINDOW_STRIDE=${WINDOW_STRIDE:-2}
 SPLIT_RATIO=${SPLIT_RATIO:-"0.7,0.2,0.1"}
 STRICT_TIME_SPLIT=${STRICT_TIME_SPLIT:-true}
 SEQ_TRAIN=${SEQ_TRAIN:-"seq_001,seq_002,seq_003,seq_004,seq_005,seq_006,seq_007"}
-SEQ_VAL=${SEQ_VAL:-""}
-SEQ_TEST=${SEQ_TEST:-""}
+SEQ_VAL=${SEQ_VAL:-"seq_008,seq_009"}
+SEQ_TEST=${SEQ_TEST:-"seq_010"}
 
 # 预训练权重（可选）
 PRETRAINED=${PRETRAINED:-false}
@@ -83,7 +79,7 @@ fi
 
 echo "运行模式: sequence_pretrain_ssl | WINDOW_SIZE=$WINDOW_SIZE STRIDE=$WINDOW_STRIDE LR=$LR WD=$WEIGHT_DECAY TEMP=$TEMPERATURE AA=$AA CJ=$COLOR_JITTER REPROB=$REPROB"
 
-OUTPUT_DIR="outputs/pretrain_ssl_$(date +%Y%m%d_%H%M%S)"
+OUTPUT_DIR="outputs/pretrain_ssl_$(date +%Y%m%d_%H%M%S)_${EPOCHS}"
 
 PRETRAIN_ARGS=(
   --model "$MODEL"
