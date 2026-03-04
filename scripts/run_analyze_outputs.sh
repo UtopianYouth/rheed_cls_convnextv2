@@ -5,9 +5,11 @@
 set -e
 cd "$(dirname "$0")/.."
 
-# 可选：指定输出目录，例如：OUT_DIR=outputs/analysis_report_custom ./scripts/run_analyze_outputs.sh
+# 可选：指定输入与输出目录，例如：
+# OUTPUTS_DIR=outputs_0226_27 OUT_DIR=outputs_0226_27/analysis_report_custom ./scripts/run_analyze_outputs.sh
+OUTPUTS_DIR=${OUTPUTS_DIR:-"outputs_0227"}
 OUT_DIR=${OUT_DIR:-""}
 
-python -m tools.analyze_outputs --outputs_dir outputs_0227 ${OUT_DIR:+--out_dir "$OUT_DIR"}
+python -m tools.analyze_outputs --outputs_dir "$OUTPUTS_DIR" ${OUT_DIR:+--out_dir "$OUT_DIR"}
 
 echo "[DONE] Analysis finished."

@@ -1,31 +1,8 @@
 \clearpage
 
-\section{基于Pyraformer的RHEED强度震荡曲线时序预测算法}
 
-本章节中，针对RHEED强度震荡曲线时序预测任务展开研究，首先介绍基于Pyraformer的RHEED强度震荡曲线时序预测整体流程与模型结构设计；随后给出实验数据构建方式、模型训练策略及评价指标；最后通过实验结果分析，验证Pyraformer方法在多尺度动态建模和预测精度方面的有效性。
+\section{总结与展望}
 
-\subsection{流程介绍}
+\subsection{研究内容总结}
 
-本研究所使用的方法Pyraformer构建多分辨率$C−ary$树结构，通过跨尺度连接将原始序列的细粒度时间节点与粗粒度节点形成层次化表征，在RHEED强度震荡曲线多尺度时序预测任务中，能够有效地捕捉MBE工艺的快速局部波动（如原子吸附或脱附的瞬态变化）与缓慢全局演变（如衬底晶格重构的周期性调整），\footnote{Pyraformer接收从时间点$t - L + 1$到当前时间点$t$的连续$L$个观测值组成的RHEED强度震荡曲线序列$z_{t-L+1:t} \in \mathbb{R}^L$，CSCM通过下采样构建多分辨率$C−ary$树，生成多尺度序列$\{z^{(s)} \}_{s=1}^S$，PAM进一步通过跨尺度与同尺度注意力交互增强特征融合，输出预测RHEED强度震荡曲线序列$\hat{z}_{t+1:t+M}$。}Pyraformer框架如图\ref{fig_pyraformer}所示。
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=1.0\textwidth]{figure/cp4/cp4_pyraformer.png}
-    \caption{Pyraformer框架图}  
-    \label{fig_pyraformer}
-\end{figure}
-
-具体地，给定从时间点$t - L + 1$到当前时间点$t$的连续$L$个观测值，组成RHEED衍射强度序列$z_{t-L+1:t} \in \mathbb{R}^L$，其跨尺度构建模块（Coarser-Scale Construction Module, CSCM）通过下采样因子$C$生成粗尺度序列$\{ \mathcal{z}^{(s)} \}_{s=1}^S$，其中第$s$层的节点$z_i^{(s)}$由前一层$C$个连续节点聚合得到：
-\begin{equation}
-    z_i^{(s)} = \text{Downsample}\left( z_{(i-1)C+1:iC}^{(s-1)} \right)
-\end{equation}
-其中，$z_i^{(s)}$表示第$s$层的第$i$个节点（粗尺度特征，小时级），$z_{(i-1)C+1:iC}^{(s-1)}$表示第$s−1$层$(i-1)C + 1$到$iC$的子节点序列（细尺度特征，秒级），$C$表示下采样因子，$C=2$即每层节点数减半。这种层次化结构使模型能够以$O(1)$的最大路径长度建模长程依赖。金字塔注意力模块（Pyramidal Attention Module, PAM）进一步通过跨尺度与同尺度注意力交互增强特征融合，对于第$s$层节点$z_i^{(s)}$，其跨尺度注意力机制连接父节点$z_{\lfloor i/C \rfloor}^{(s+1)}$与子节点$z_{\lfloor i/C \rfloor}^{(s+1)}$，而同尺度邻接注意力机制则捕捉局部时序模式：
-\begin{equation}
-    \text{Attn}(Q, K, V) = \text{Softmax}\left( \frac{QK^\top}{\sqrt{d_k}} \odot M_{\text{intra}} \right) V
-\end{equation}
-其中，$\frac{QK^\top}{\sqrt{d_k}}$计算未归一化注意力分数，表示所有节点间的相似度，维度为$L \times L$，掩码矩阵$M_{\text{intra}}$限制每个节点仅关注前后$k$个邻接节点，$\frac{QK^\top}{\sqrt{d_k}} \odot M_{\text{intra}}$仅保留相邻$k$个位置的分数，使Pyraformer能够同时建模局部高频振荡（细粒度节点的同尺度注意力）和全局周期性（粗粒度节点的跨尺度交互），且计算复杂度保持$O(L)$。
-
-\subsection{实验设计}
-
-\subsection{实验结果分析}
-
-\subsection{本章小结}
+\subsection{未来工作展望}

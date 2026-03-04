@@ -15,6 +15,7 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+.codebuddy/
 
 # ---- Logs / caches ----
 *.log

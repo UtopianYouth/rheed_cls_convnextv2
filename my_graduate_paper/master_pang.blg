@@ -6,44 +6,51 @@ Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated wiz_functions (elt_size=4) to 6000 items from 3000.
 Database file #1: ref_paper.bib
-You've used 15 entries,
+Warning--Require citedate: russakovsky2015imagenet
+Warning--Require citedate: wilkinson2009clusterheatmap
+Warning--Require citedate: davis2006relationship
+Warning--Require citedate: burton1951crystal
+Warning--Require citedate: kwoen2020rheed
+Warning--Require citedate: khairehwalieh2023deoxidation
+You've used 59 entries,
             3099 wiz_defined-function locations,
-            799 strings with 8644 characters,
-and the built_in function-call counts, 28846 in all, are:
-= -- 3199
-> -- 53
-< -- 121
-+ -- 2525
-- -- 185
-* -- 751
-:= -- 3182
+            1013 strings with 17541 characters,
+and the built_in function-call counts, 109919 in all, are:
+= -- 12127
+> -- 213
+< -- 485
++ -- 9521
+- -- 733
+* -- 2791
+:= -- 12207
 add.period$ -- 0
-call.type$ -- 15
-change.case$ -- 76
+call.type$ -- 59
+change.case$ -- 308
 chr.to.int$ -- 0
-cite$ -- 15
-duplicate$ -- 4131
-empty$ -- 1128
-format.name$ -- 152
-if$ -- 7712
+cite$ -- 65
+duplicate$ -- 15688
+empty$ -- 4438
+format.name$ -- 616
+if$ -- 29626
 int.to.chr$ -- 0
-int.to.str$ -- 15
+int.to.str$ -- 59
 missing$ -- 0
-newline$ -- 72
-num.names$ -- 15
-pop$ -- 393
+newline$ -- 204
+num.names$ -- 59
+pop$ -- 1510
 preamble$ -- 1
 purify$ -- 0
 quote$ -- 0
-skip$ -- 243
+skip$ -- 1054
 stack$ -- 0
-substring$ -- 3506
-swap$ -- 744
+substring$ -- 13246
+swap$ -- 2666
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
 type$ -- 0
-warning$ -- 0
-while$ -- 366
-width$ -- 17
-write$ -- 229
+warning$ -- 6
+while$ -- 1415
+width$ -- 61
+write$ -- 761
+(There were 6 warnings)

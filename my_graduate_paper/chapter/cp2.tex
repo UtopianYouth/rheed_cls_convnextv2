@@ -1,151 +1,729 @@
 \clearpage
 
-\section{基于ConvNeXt V2的RHEED图像分类}
+\section{基于ConvNeXt V2的RHEED图像分类研究}
 
-本章针对分子束外延（MBE）薄膜生长过程中的二维层状生长（2D）与三维岛状生长（3D）模式识别问题，构建基于ConvNeXt V2的RHEED图像分类方法。需要强调的是，本章分类任务并非孤立的算法验证，而是本文多任务RHEED智能分析框架的第一环：分类分支用于给出宏观生长阶段/生长模式的快速判别，后续目标检测分支将在共享骨干网络（backbone）的特征表征上进一步定位条纹/斑点等局部结构证据，以提升结果可解释性并为过程监控提供更细粒度信息。
-
-本章内容组织如下：第\ref{subsec:cp2_intro}节给出研究动机与问题背景；第\ref{subsec:cp2_convnextv2}节介绍ConvNeXt V2算法原理，并论证其对RHEED图像的适用性；第\ref{subsec:cp2_dataset}节描述数据集构建与严格的7:1:2时序切分流程；第\ref{subsec:cp2_setup}节给出自监督预训练与监督微调的实验设置；第\ref{subsec:cp2_results}节展示不同预训练权重及不同骨干网络的对比结果与分析；第\ref{subsec:cp2_summary}节进行总结并衔接后续检测任务。
+针对MBE薄膜生长过程中的二维层状生长与三维岛状生长模式识别问题，本研究构建基于ConvNeXt V2的RHEED图像分类方法。本章节是多任务RHEED图像分析协同框架的第一环，分类任务给出MBE的宏观生长模式判别，目标检测任务基于共享骨干网络的特征表征，定位RHEED图像条纹和斑点的局部结构，为MBE过程监控提供细粒度信息。本章节首先引出RHEED图像分类的研究动机与问题背景，然后介绍ConvNeXt V2算法原理，并论证其在RHEED图像分类任务的适用性；之后描述RHEED图像分类任务的数据集构建流程且介绍自监督预训练与分类模型微调的实验设置；最后本章结尾将展示不同模型及不同预训练权重下的RHEED图像分类任务表现。
 
 \subsection{引言}
 \label{subsec:cp2_intro}
 
-反射高能电子衍射（RHEED）是MBE生长过程中的原位实时监控技术。其衍射图样直接反映了晶体表面的微观形貌：在二维层状生长（2D）阶段，表面原子排列平整有序，RHEED图像呈现清晰、锐利的条纹；而在三维岛状生长（3D）阶段，表面粗糙度增加，电子束发生透射衍射，图像中条纹逐渐模糊并伴随明显的斑点或弥散背景增强\upcite{c14,c15}。传统工艺中，对生长模式的判断主要依赖工程师的人工观察，存在主观性强、易疲劳、难以量化及无法实时记录等痛点。
+RHEED是MBE生长过程中的原位实时监控技术，其衍射图样直接反映了晶体表面的微观形貌。在二维层状生长阶段，其MBE下的衬底表面原子排列平整有序，RHEED图像呈现清晰、锐利的条纹信息；在三维岛状生长阶段，MBE下的衬底表面粗糙度增加，导致电子束发生透射衍射，此时RHEED图像中条纹逐渐模糊并伴随明显的斑点或弥散背景增强\upcite{c14,c15}。传统MBE工艺中，对衬底表面生长模式的判断主要依赖科研人员的人工观察，存在主观性强、易疲劳、难以量化及无法实时记录等痛点。即使深度学习在图像分类领域取得巨大成功，但RHEED图像分类任务仍然面临独特的挑战，首先，RHEED图像标注数据稀缺，MBE实验成本高昂，难以构建大规模标注数据集；其次，MBE的二维层状生长和三维岛状生长模式的类间差异微妙，两种模式之间存在复杂的过渡态，且在具有差异的成像条件下，RHEED图像亮度、对比度差异巨大；最后基于RHEED图像分析任务的深度学习模型泛化性差，应用传统数据集预训练的通用模型往往难以适应RHEED图像特有的物理纹理特征。
 
-尽管深度学习已在图像分类领域取得巨大成功，但RHEED图像分类面临独特的挑战：（1）**标注数据稀缺**：MBE实验成本高昂，难以构建大规模标注数据集；（2）**类间差异微妙**：2D与3D模式之间存在复杂的过渡态，且不同成像条件下亮度、对比度差异巨大；（3）**模型泛化性差**：直接应用ImageNet预训练的通用模型往往难以适应RHEED特有的物理纹理特征。
+针对上述问题，本研究提出一种基于ConvNeXt V2结合FCMAE自监督学习的分类方案。具体地，基于ConvNeXt V2的GRN机制在增强RHEED图像弱纹理特征的中，有较好的性能表现；且在无标签RHEED图像中进行FCMAE自监督预训练，模型能有效习得衍射图样的内在物理规律，显著降低RHEED图像数据的标注依赖并提升分类精度。
 
-针对上述问题，本章提出一种基于 **ConvNeXt V2** 结合 **自监督学习（SSL）** 的分类方案。我们利用ConvNeXt V2的全局响应归一化（GRN）机制来增强对弱纹理特征的提取能力，并通过在无标签RHEED数据上进行掩码自监督预训练，使模型习得衍射图样的内在物理规律，从而显著降低对标注数据的依赖并提升分类精度。
-
-\subsection{ConvNeXt V2算法原理}
+\subsection{ConvNeXt V2算法}
 \label{subsec:cp2_convnextv2}
+本研究使用方法ConvNeXt V2，其核心在于FCMAE自监督预训练和GRN机制的协同设计，将自监督预训练与特征增强相结合，针对对RHEED图像存在高噪声、局部遮挡和数据标注困难的特点，形成鲁棒的特征提取框架。
 
-\subsubsection{现代化卷积设计与GRN机制}
-ConvNeXt系列通过引入Vision Transformer（ViT）的先进设计理念（如大核卷积、LayerNorm、GELU激活等）对传统卷积网络进行现代化改造，使其在保持卷积归纳偏置（Inductive Bias）的同时具备了强大的表征能力。ConvNeXt V2在此基础上引入了全卷积掩码自编码器（FCMAE）框架，并设计了核心组件——全局响应归一化（Global Response Normalization, GRN）。
+\subsubsection{FCMAE自监督预训练}
+\label{subsubsec:fcmae}
 
-在RHEED图像中，背景散射往往占据大面积区域，导致有效特征（条纹/斑点）容易被淹没，造成特征通道的“塌陷”（Feature Collapse）。GRN层通过计算特征通道的全局范数并进行动态重标定，能够显著增强高响应通道的权重，抑制冗余背景噪声。这一机制使得ConvNeXt V2特别适合处理信噪比低、纹理单一的RHEED衍射图样。
+ConvNeXt V2 的核心改进之一是将掩码自编码器以全卷积形式引入卷积骨干网络，形成 FCMAE（Fully Convolutional Masked AutoEncoder）自监督预训练框架。该框架面向标注稀缺而无标注数据充足的视觉任务，通过掩码重建学习可迁移的结构表征，从而提升下游识别性能\upcite{woo2023convnextv2,he2022mae}。相较于 ViT-MAE 将图像划分为 patch 并对 token 序列进行编码，CNN 依赖滑动窗口的密集局部算子，若以 mask token 或零填充替代被遮挡区域并直接执行标准卷积，将引入三类关键偏差：卷积感受野跨越可见与不可见区域导致被遮挡信息以统计形式泄露，引发重建任务的捷径学习；预训练阶段存在填充值而微调阶段输入完整，带来前后分布不一致；高掩码比例下密集卷积对无效区域重复计算并放大填充值与噪声扰动，降低优化稳定性。FCMAE 将掩码图像建模为稀疏观测，并以稀疏计算将仅从可见区域提取特征的约束固化到前向过程中，从而抑制信息泄露并增强预训练与微调的一致性\upcite{woo2023convnextv2}。FCMAE 的整体流程如图\ref{fig:cp2_fcmae_1}所示，包含掩码生成、稀疏编码、轻量解码与重建监督，并通过参数等价映射实现预训练表示向下游分类与检测任务的无缝迁移。
 
-\subsubsection{为何选择ConvNeXt V2而非Transformer}
-尽管Transformer（如ViT, Swin）在自然图像上表现优异，但在RHEED小样本分类任务中，纯卷积架构（ConvNeXt）具有显著优势：
-\begin{enumerate}
-    \item \textbf{归纳偏置的必要性}：RHEED分类高度依赖局部纹理（如条纹的锐度、斑点的形状），卷积操作天然具备平移不变性和局部性，更适合此类任务，且在小数据量下更易收敛。
-    \item \textbf{训练稳定性}：Transformer对超参数极其敏感且容易过拟合（见后文PoolFormer实验结果），而ConvNeXt V2训练过程平滑稳定，更利于工业部署。
-    \item \textbf{工程复现性}：ConvNeXt V2参数量适中（如Atto版本仅3.4M），推理速度快，且支持timm库开箱即用，便于后续多任务系统的集成。
-\end{enumerate}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.84\textwidth]{figure/cp2/cp2_fcmae_1.png}
+    \caption{FCMAE自监督预训练流程}
+    \label{fig:cp2_fcmae_1}
+\end{figure}
 
-\subsubsection{自监督预训练策略}
-考虑到RHEED数据的特殊性（与ImageNet域差异大），本章采用SimCLR风格的对比自监督学习策略替代FCMAE。通过对无标签RHEED图像进行强数据增强（随机裁剪、翻转、高斯模糊），迫使网络学习图像的内在结构不变性。这种策略无需额外的解码器设计，工程实现简单且稳定，能够为微调阶段提供包含丰富物理先验的初始化权重。
+在实现层面，设输入图像为 $x \in \mathbb{R}^{H \times W \times C}$，随机掩码矩阵为 $M \in \{0,1\}^{H \times W}$，以 $60\%$ 的比例遮挡像素。由于 ConvNeXt 采用层级下采样结构，掩码需要在多尺度特征图上保持空间对齐，以保证不同 stage 的可见区域在几何上对应一致，进而使编码器在各尺度上均满足仅利用可见观测的要求\upcite{woo2023convnextv2}。本文进一步采用多尺度递增掩码策略，在浅层阶段保留相对充分的局部纹理线索，在深层阶段提高遮挡强度以强化对全局结构一致性的依赖。该策略与 RHEED 的判别机制相一致，二维层状生长与三维岛状生长的差异主要体现为条纹方向一致性与周期能量分布的改变，以及斑点与弥散背景统计形态的转变。逐层增强遮挡在不同表征层次上引入缺失观测压力，使网络在局部不完整与全局不完整的输入条件下均能维持稳定表征，从而提升跨批次与跨成像条件的泛化能力。为补充掩码策略，定义可见集合与掩码集合如下：
+\begin{equation}
+    \mathcal{M}\cup\Omega=\{1,\ldots,N\},\quad \mathcal{M}\cap\Omega=\varnothing,\quad |\mathcal{M}|=\rho N,
+\end{equation}
+并记可见输入如下：
+\begin{equation}
+    X_{\mathrm{vis}} = X\odot M,
+\end{equation}
 
-\subsection{数据集构建与预处理}
+编码器侧采用稀疏卷积，仅在可见区域聚合信息。设稀疏卷积核为 $K_s \in \mathbb{R}^{k \times k \times C \times C'}$，其在可见区域上的计算如下：
+\begin{equation}
+    y_{i,j,c'} = \sum_{m,n} K_s(m,n) \cdot x_{i+m,\,j+n,\,c} \cdot M_{i+m,\,j+n},
+\end{equation}
+该形式的关键在于掩码门控限制卷积的有效输入，使局部感受野无法从被遮挡区域获得直接贡献，从而抑制边界复制与低频平滑等捷径行为。对于 RHEED 图像，高能电子束引入的随机噪声多表现为高频扰动与局部亮度抖动，稀疏可见输入相当于在空间上对噪声进行随机子采样观测，配合重建目标促使网络优先学习稳定结构成分，包括条纹主方向与间距信息、斑点尺度与密度统计，以及背景散射能量分布轮廓。该结构优先的表征学习路径较自然图像语义驱动的监督预训练更贴近衍射图样规律，从而在标注稀缺条件下提升分类样本效率\upcite{woo2023convnextv2,liu2022convnext}。
+
+在解码与监督侧，FCMAE 采用非对称编码器与解码器配置，使用容量较大的编码器学习可迁移表征，并以轻量卷积解码器完成像素级重建，同时通常仅对被掩码区域计算重建误差，使模型容量集中于形成通用表征而非复原可见区域细节\upcite{he2022mae,woo2023convnextv2}。为补充标准重建目标，先给出仅在被掩码区域计算的损失如下：
+\begin{equation}
+    \mathcal{L}_{\mathrm{mae}}=\frac{1}{|\Omega_m|}\sum_{(i,j)\in\Omega_m}\left\|x_{i,j}-\hat{x}_{i,j}\right\|_2^2,\quad
+    \Omega_m=\{(i,j)\mid M_{i,j}=0\},
+\end{equation}
+考虑到RHEED的关键信息具有显著的周期性与方向性，本文在重建损失中引入频域相似度与结构相似度联合约束如下：
+\begin{equation}
+    \mathcal{L}_{\mathrm{recon}}
+    = \lambda_1 \left\lVert \mathcal{F}(x_{\mathrm{rec}}) - \mathcal{F}(x_{\mathrm{gt}}) \right\rVert_2
+    + \lambda_2\, \mathrm{SSIM}(x_{\mathrm{rec}},\,x_{\mathrm{gt}}),
+\end{equation}
+其中频域项用于约束条纹等周期结构在能量分布与方向性上的一致性，SSIM 用于强调局部结构一致性并弱化绝对亮度差异，从而缓解曝光与增益变化导致的强度尺度漂移。相较仅采用像素域 $L_2$ 重建，该联合约束更直接地对衍射结构模式施加监督，有利于获得对分类与检测均具有迁移价值的共享表征。
+
+FCMAE 在工程层面的重要优势在于预训练阶段的稀疏卷积与微调阶段的标准卷积可通过期望意义下的参数映射保持一致，从而避免引入额外推理分支或特殊 token。稀疏卷积到稠密卷积的转换公式如下：
+\begin{equation}
+    K_d = \dfrac{\mathbb{E}_M\!\left[\,K_s \odot M\,\right]}{\mathbb{E}_M\!\left[\,M\,\right]},
+\end{equation}
+该无缝转换保证同一骨干网络在自监督预训练、分类微调与后续目标检测复用时具备一致的参数语义与前向形式，有助于构建以共享骨干为中心的多任务协同框架。与对比学习类自监督方法相比，掩码重建不依赖大规模负样本或复杂队列机制，训练过程更稳定；与直接使用 ImageNet 监督预训练相比，FCMAE 在目标域无标注数据上形成的先验能够降低域差异带来的迁移损失，更适用于语义弱、结构强且成像条件漂移明显的 RHEED 场景\upcite{he2022mae,woo2023convnextv2}。
+
+\subsubsection{GRN机制}
+\label{subsubsec:grn}
+
+ConvNeXt V2 的另一项关键改进是引入 GRN（Global Response Normalization），其提出动机与 FCMAE 的高掩码自监督训练直接相关。在高掩码比例预训练中，CNN 更易出现通道响应退化，表现为部分通道长期低激活或趋同，导致表征多样性不足并削弱预训练对下游任务的增益\upcite{woo2023convnextv2}。在 RHEED 场景下，该问题更易被放大，因为衍射图样通常包含大面积背景散射，而判别信息集中于条纹、斑点及弱衍射结构等少量区域，若缺乏有效的通道竞争与选择机制，背景响应将主导优化过程并抑制对关键弱结构的表征。GRN 以较低结构开销引入基于全局响应尺度的通道校准，使网络在掩码预训练阶段维持更健康的通道分布，并在迁移到分类与检测时增强对微弱结构变化的敏感性。GRN 的嵌入位置与数据流如图\ref{fig:cp2_grn}所示，通常位于 ConvNeXt V2 block 的通道混合分支中，与卷积表征共同构成端到端可训练的特征增强单元\upcite{woo2023convnextv2}。从机制上看，GRN 基于通道全局响应强度刻画通道重要性，并在跨通道归一化后完成重标定如下：
+\begin{equation}
+    \hat{x}_c
+    = \frac{x_c}{\sqrt{\frac{1}{C}\sum_{d=1}^{C} x_d^2 + \epsilon}}
+    \cdot \gamma_c + \beta_c,
+\end{equation}
+该式以通道能量统计构造归一化因子，对通道响应进行尺度校正，并通过可学习仿射参数实现自适应调节，其中 $\epsilon$ 用于数值稳定，$\gamma$ 与 $\beta$ 分别控制通道响应的缩放与偏置。结合 ConvNeXt V2 的实现语境，GRN 的作用并非替代 BN 或 LN 等归一化层，而是显式强化通道间的相对差异，使与条纹方向、条纹间距或斑点点状结构相关的通道在全局统计上与背景散射主导通道形成更清晰的分离，并通过归一化与仿射调节放大这种分离，从而提升特征的选择性与可分性\upcite{woo2023convnextv2}。在掩码预训练条件下，GRN 进一步缓解通道塌陷引起的特征趋同，使不同通道更倾向学习互补结构模式，从而增强编码器对衍射结构的表达能力。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.60\textwidth]{figure/cp2/cp2_grn.png}
+    \caption{ConvNeXt V2块}
+    \label{fig:cp2_grn}
+\end{figure}
+
+在二维层状与三维岛状生长分类任务中，GRN 的优势可从衍射图样能量分布的变化得到解释。二维层状生长通常表现为更清晰的条纹与更稳定的周期结构，条纹的方向一致性使方向敏感通道形成更集中的响应；三维岛状生长伴随漫散射增强与条纹衰减，斑点与弥散背景抬升，能量从方向性与周期性成分转向非方向性离散点状与背景成分。GRN 依据全局响应统计对通道进行重标定，有助于在能量迁移过程中维持条纹相关通道与斑点相关通道的区分度，并降低背景波动对判别信号的干扰，从而提高模式转变与过渡态样本的可分性。相较于部分通道注意力模块，GRN 不依赖额外复杂门控网络而直接从响应统计出发，结构更轻量，并且在 ConvNeXt V2 的自监督设定中已被验证可显著提升掩码预训练的迁移效果，因此更适合在共享骨干且工程复杂度受控的多任务系统中使用\upcite{woo2023convnextv2,liu2022convnext,liu2021swin}。
+
+综合来看，FCMAE 通过稀疏可见输入的重建学习在无标注 RHEED 数据上获得稳健表征，GRN 通过全局响应归一化增强通道竞争并提升弱结构显著性。二者协同使共享骨干网络兼具对噪声、遮挡与曝光漂移的鲁棒性，以及对条纹与斑点等关键结构差异的敏感性，从而为生长模式分类提供更可靠的宏观判别基础，并为后续目标检测分支提供更适合定位条纹与斑点的中间特征表示，最终支撑本文多任务协同建模的统一技术路线。
+
+\subsection{数据集}
 \label{subsec:cp2_dataset}
+本节对RHEED图像数据集的样本来源、类别语义、序列组织方式与标注粒度做阐述，强调RHEED图像时序相关性与物理语义一致性，为后续模型训练与评估提供数据基础。
 
-\subsubsection{数据集构建与清洗}
-实验数据采集自MBE生长过程的RHEED视频流。为确保数据质量，我们制定了严格的数据清洗规则，剔除了生长初期的非稳态帧（如快门开启瞬间的震荡数据）。最终构建的数据集包含2D层状生长与3D岛状生长两大类，共约2.5万帧有效图像。
+\subsubsection{数据集构建}
+本研究以MBE生长过程中连续采集的RHEED图像序列为数据基础，分类任务目标是识别二维层状生长与三维岛状生长两类宏观生长模式。早期机器学习研究更多将数据集构建简化为图像采集与人工标注\upcite{c1,c8,c9,c12,c19}。本研究进一步强调，数据集构建的关键在于对标签语义一致性，时序相关性建模，数据划分去泄露控制与样本统计代表性进行系统约束，从而保证共享表征学习与泛化评估具有可重复与可比较的基础。
 
-\subsubsection{严格的时序划分方案（7:1:2）}
-RHEED数据具有极强的时间相关性，随机打散划分会导致严重的时间泄露。为此，本研究采用\textbf{按序列划分}策略，严格保证训练集、验证集和测试集来自完全独立的实验批次。具体划分比例如表\ref{tab:dataset_split}所示，遵循 **7:1:2** 的原则。
+标签语义上，本研究采用二分类方案。真实RHEED图像序列样本中，视觉表征空间存在连续过渡带，因此数据集构建不以排除过渡样本为目标，而是通过一致的标注准则与噪声控制来稳定语义边界，且在划分阶段保持过渡难例的代表性，避免模型仅在易分样本上取得虚高指标。该策略与CV领域中数据集偏置与捷径学习的研究所得结果一致，在训练与评估中忽略较难案例和分布差异，模型更容易学习到与任务语义弱相关的统计捷径，导致泛化失效\upcite{torralba2011datasetbias,geirhos2020shortcut,northcutt2021confidentlearning}。本研究将标签一致性、过渡样本保留与严格划分共同作为数据集构建的核心约束，支撑后续模型的可解释评估与稳健泛化。
+
+数据清洗上，每条RHEED图像序列的前段具有非平稳的干扰数据帧，早期RHEED图像分析中，科研人员多采用经验性截断、人工剔除等方式\upcite{c1,c8,c12}进行干扰数据帧的清洗。与早期RHEED图像数据清洗不同的是，本研究将非平稳的干扰数据帧形式化建模为 $x_t = s_t + n_t$，其中 $n_t$ 表征束流稳定、曝光抖动与机台启动过渡引入的冲击噪声与低频漂移；对机械干扰强度的量化采用滑动窗口方差、短时能量与高频谱能量占比等统计量，并以变点检测思想确定截断点\upcite{adams2007bocpd}，使模型更关注MBE稳定阶段的可解释纹理，提升后续训练与评估的可靠性。
+
+本研究对七条训练的RHEED图像序列进行统一帧数，使其预训练与微调阶段在RHEED图像数据帧的规模与时序跨度上具有可比性，且降低序列长度差异带来的分布偏置使模型更聚焦于纹理与结构差异。统一帧数配置，有效地减少由样本规模不一致引发的梯度主导效应与类别先验偏移，并且可以提升跨序列的泛化评估一致性，避免模型在特定序列长度上形成隐性捷径\upcite{torralba2011datasetbias,geirhos2020shortcut}。
 
 \begin{table}[h]
-\centering
-\caption{RHEED数据集划分方案（按序列ID）}
-\label{tab:dataset_split}
-\begin{tabular}{cccccc}
-\hline
-\textbf{数据集} & \textbf{序列ID} & \textbf{2D帧数} & \textbf{3D帧数} & \textbf{总帧数} & \textbf{比例} \\ \hline
-训练集 & \texttt{seq\_001} \textasciitilde \texttt{seq\_007} & $\sim$11,900 & $\sim$4,550 & $\sim$16,450 & 64.6\% ($\approx$7) \\
-验证集 & \texttt{seq\_008} & 1,801 & 1,101 & 2,902 & 11.4\% ($\approx$1) \\
-测试集 & \texttt{seq\_009}, \texttt{seq\_010} & 3,902 & 2,202 & 6,104 & 24.0\% ($\approx$2) \\ \hline
-\textbf{合计} & 10条序列 & 17,603 & 7,853 & 25,456 & 100\% \\ \hline
-\end{tabular}
+    \centering
+    \caption{RHEED图像数据集统计}
+    \label{tab:cp2_dataset_after_trim}
+    \begin{tabular}{lcccc}
+        \hline
+        \textbf{Classes} & \textbf{seq01 to 07} & \textbf{seq08} & \textbf{seq09} & \textbf{seq10} \\ \hline
+        2D               & 1701                 & 1801           & 1901           & 2001           \\
+        3D               & 651                  & 1101           & 1001           & 1201           \\ \hline
+    \end{tabular}
 \end{table}
 
-该划分方案中，测试集包含两条从未参与训练的完整独立序列（\texttt{seq\_009}, \texttt{seq\_010}），样本量占比达24\%，足以对模型的跨批次泛化能力进行严苛评估。
+MBE生长序列的连续采样帧中，二维层状生长的RHEED图像帧数显著多于三维岛状生长的RHEED图像帧数，出现此情况的主要原因为，一种由时间序列采样机制带来的类别不均衡现象，在MBE中，二维层状生长具备更稳定、更长持续时间的视觉模式，因此在按帧抽取构建数据集时更易形成大量重复和一致的RHEED帧样本；三维岛状生长多出现在相对短暂的形貌变化或转变窗口中，具备持续时间短、出现稀疏的视觉模式，从而导致其样本规模天然偏小。该类长尾分布会使学习算法在经验风险最小化过程中偏向多数类，出现总体Accuracy较高但少数类召回不足的现象，这一问题在不均衡学习研究中被反复指出\upcite{He2009TKDE,geirhos2020shortcut}。此外，从视觉表征角度看，二维层状生长的RHEED图像通常具有更强的类内一致性与更高的重复出现频率，可被视为高频基础模式；三维岛状生长图样变化幅度更大、类内差异更强，并且可能与过渡帧相邻，导致决策边界附近样本更难分、误差更具结构性。因此，本研究在评估阶段除Accuracy外同时报告Macro-F1、类别Precision/Recall等指标，并结合混淆矩阵分析主要混淆方向，以刻画各类的均衡识别能力与误分结构，避免在类别不均衡条件下由单一总体指标导致对模型泛化能力过度乐观估计的偏差 \cite{Kautz2017PR}。
 
-\subsubsection{预处理流程}
-\begin{itemize}
-    \item \textbf{格式转换}：将原始16-bit TIFF图像转换为8-bit PNG，并进行线性拉伸归一化。
-    \item \textbf{输入尺寸}：统一缩放至 $224 \times 224$ 像素。
-    \item \textbf{数据增强}：自监督阶段采用强增强（RandomResizedCrop, ColorJitter, GaussianBlur）；微调阶段仅采用RandomHorizontalFlip与弱裁剪，以保持测试一致性。
-\end{itemize}
+本研究提出的多任务目标约束下，RHEED图像分类任务数据集的构建，还需服务RHEED图像条纹和斑点的目标检测任务。本研究第二章分类任务承担生长模式先验识别角色，第三章检测任务定位条纹和斑点等局部关键特征信息。为保证两任务共享骨干特征具备迁移价值，数据构建阶段保留了RHEED图像条纹的强弱变化、斑点的密度变化和背景散射变化等跨尺度信息，而非通过裁剪将RHEED图像简化为局部块；此设计使RHEED图像分类分支任务学习到的中高层表征既能支持全局阶段判别，也可以为RHEED图像调味和斑点目标检测分支任务提供具物理意义的纹理先验\upcite{c11,c13,c7,lin2017fpn,he2017maskrcnn}。最后，本研究将数据集构建视为持续演化过程。若后续产生新的RHEED图像序列，将其纳入训练集、验证集和测试集，以提升模型在MBE过程中对二维层状生长与三维岛状生长的判别泛化能力，确保评估结果具有长期可复现性与工程适用性。
+
+\subsubsection{数据预处理}
+RHEED原始图像序列以高位深灰度格式存储。本研究为保证训练流程的稳定性和兼容主流视觉模型的输入，首先进行位深映射与格式标准化，将单帧灰度值线性归一化到\([0,255]\)区间并保存为8比特位的PNG数据格式。具体地，本研究采用逐帧线性映射固定阈值压缩，在不同曝光条件下最大限度地保留每帧RHEED图像内部的相对灰度梯度，避免弱条纹和斑点在单帧灰度归一化后被背景噪声淹没。其次，在模型预训练和微调的图像输入阶段，将原始信号为单通道衍射的RHEED图像映射为三通道张量，使其与成熟视觉模型接口的图像输入标准保持一致，在映射位三通道张量时，复用标准归一化配置与参数初始化经验。此外，本研究保持三通道数值一致，映射不再引入额外图像特征语义。
+
+RHEED原始图像序列的数据增强策略按训练阶段区分。具体地，FCMAE自监督预训练阶段采用更强的数据扰动，模型学习不依赖瞬时亮度与局部噪声的稳健表征；监督微调阶段采用相对保守的增强幅度，重点维持条纹方向、斑点结构与背景分布的可解释性。FCMAE自监督预训练在强增强下具备获得可迁移表示\upcite{simclr,moco,byol,autoaugment2019,cutmix2019}。监督微调阶段采用相对保守的增强幅度，主要保持RHEED图像条纹方向、斑点尺度和背景散射形态的物理可解释性，使模型在目标域更专注于真实纹理差异，提升最终收敛稳定性与泛化表现。
+
+此外，在序列样本生成方面，本研究基于滑动窗口机制引入可变步长生成训练样本。在保持窗口长度一致的前提下，通过在不同步长上采样同一序列，可形成多视角时间片段，等价于对时序局部动态进行数据增强，有助于缓解样本冗余并扩大时序覆盖。较大的步长减少高度重叠样本，降低训练样本数量与计算开销，提升吞吐效率，较小步长保留细粒度过渡细节，增强模型对短时形变的敏感性，从而在预训练阶段学习稳定结构表征，在微调阶段改善过渡态识别的泛化表现。此类多尺度时间片段建模与跨步长采样的有效性在近年时序建模研究中得到验证\upcite{timesnet2023,patchtst2023}。
+
+最后，本研究对二维层状生长RHEED图像序列和三维岛状生长图像序列进行统计差异分析。如图\ref{fig:cp2_seq001_stats}所示，二维层状生长RHEED图像序列的平均图像中条纹能量带更连续、更平直；三维岛状生长RHEED图像序列的平均图像中高亮区更分散；其次，如图\ref{fig:cp2_seq001_stats}所示，灰度直方图在低灰度和中低灰度区间呈现稳定差异，有效验证了二维层状生长的RHEED平均图像和三维岛状生长的RHEED平均图像在背景散射与主响应强度分布上存在统计可分性。进一步地，Sobel边缘能量在二维层状生长的RHEED平均图像中整体更高，有效地解释RHEED图像条纹边界更清晰且结构梯度更强，此结果与前述灰度统计共同支持分类任务的可行性。RHEED平均图像进行位深映射后，其二维层状生长图像条纹区与三维岛状生长图像散射区的相对灰度排序保持稳定，表明弱信号未被压平，且统一输入分辨率为$656\ast 492$的图象时，在其图像保真与计算开销之间能够保持合理平衡。需要强调的是，衬底MBE过渡时段的二维后期样本与三维早期样本存在统计重叠，本研究保留重叠区间，模拟贴近真实MBE工艺场景，重叠样本为多任务协同学习提供关键案例，使共享骨干有效地联合建模全局分布差异与局部边缘差异，提升第三章RHEED图像条纹和斑点目标检测分支的稳定性与可解释性\upcite{he2022mae,liu2022convnext,woo2023convnextv2}。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\textwidth]{figure/cp2/seq001_stats_2d_vs_3d.png}
+    \caption{二维层状生长与三维岛状生长RHEED图像统计}
+    \label{fig:cp2_seq001_stats}
+\end{figure}
 
 \subsection{实验设置}
 \label{subsec:cp2_setup}
 
-本章实验基于PyTorch框架与timm库实现，硬件环境为单张NVIDIA A100 GPU。
+本研究实验设置主要分两部分阐述，分别是实验过程与结果评估设置和模型实验细节。
 
-\subsubsection{自监督预训练设置}
-采用SimCLR风格进行预训练，关键参数如下：
-\begin{itemize}
-    \item 模型：\texttt{convnextv2\_nano} / \texttt{convnextv2\_atto}
-    \item Epochs：对比了 80 / 120 / 150 三组设定
-    \item Batch Size：64
-    \item Learning Rate：3e-4 (Cosine Decay)
-    \item Optimizer：AdamW (Weight Decay=0.01)
-    \item Loss：NT-Xent Loss (Temperature=0.1)
-\end{itemize}
+实验过程与结果评估设置主要围绕可复现性与可比较性展开。首先，本研究在RHEED图像分类的数据层采用严格序列级切分，可有效避免随机逐帧划分带来的相邻帧信息泄露；其次，本研究在对照层将实验变量拆解为结构变量和初始化变量两条主线，前者对应同一模型权重ImageNet初始化下四种骨干网络的横向比较，后者对应固定ConvNeXt V2骨干网络下不同模型权重来源的纵向比较；最后，本研究在报告层面统一采用验证集最优epoch在测试集上得出对比结果，且同步保留最后一轮epoch结果和训练曲线用于稳定性审查，可避免仅依赖单一峰值作结论。此外，本研究指标体系采用总体指标和类别指标联合报告的方式，其中$Accuracy$反映RHEED图像总体正确分类的比例，该指标可对应在线监测场景中的总体判别效率，但在类别不均衡条件下可能掩盖少数类风险；$Precision$反映预测目标类别样本中的真实命中比例，该指标可识别模型是否存在误报偏高问题；$Recall$衡量目标类别样本被成功检出的比例，该指标可直接反映漏检风险；$F1$基于$Precision$和$Recall$的调和平均统一二者权衡，该指标可抑制单侧优化造成的评价偏差；$Macro F1$对各类别$F1$做等权平均，该指标可在二维层状生长的RHEED图像样本占优的数据分布时，更客观地呈现类别均衡识别能力。本研究同时报告$2D F1$和$3D F1$定位具体类别的性能短板，且可判断模型是否存在总体准确率可接受，但3D阶段召回不足的隐蔽失效模式。最后，本研究结合混淆矩阵追踪二维层状生长末期和三维岛状生长早期的双向错分结构，以支持从MBE过程角度解释误差来源。在二维层状生长和三维岛状生长的RHEED图像分类任务种，单一总体指标难以充分描述模型在类别分布偏斜条件下的真实泛化行为，本研究将$Accuracy$与$Macro F1$并列为核心指标，并以类别级$Precision Recall F1$和混淆矩阵构成实验过程与结果评估的闭环\upcite{He2009TKDE,Kautz2017PR,torralba2011datasetbias,geirhos2020shortcut}。
 
-\subsubsection{微调设置}
-微调阶段加载预训练权重（ImageNet或SSL），训练50个Epoch（由于收敛快，通常30-40轮即可），参数如下：
-\begin{itemize}
-    \item Batch Size：32
-    \item Learning Rate：1e-4
-    \item Loss：Cross Entropy (Label Smoothing=0.0)
-    \item 评价指标：Accuracy, Macro-F1
-    \item 策略：保存验证集Accuracy最高的模型权重用于测试。
-\end{itemize}
+模型实验细节主要按两组对照实验分别说明，且在共享实验硬件环境和参数设置上保持统一。首先，本研究在共享实验硬件环境和参数设置方面，训练环境采用单卡A100并启用自动混合精度，优化器采用$AdamW$，输入分辨率为$656\ast 492$，在全部对照实验中保持一致，微调总轮数统一为50轮，数据划分与损失函数定义在同一组对照实验内严格固定，严格保证比较结果可归因于目标变量而非训练配置差异。本研究的第一组对照实验基于ImageNet初始化权重的四模型结构对照，选取ConvNeXt Zepto，ConvNeXt V2 Atto，MobileViT XXS与PoolFormerV2 S12为代表模型，四者在相同训练预算与相同评估协议下开展横向比较，在比较目标下，本研究并非追求单epoch最高分，而是联合考察验证曲线形态、测试集综合指标、类别均衡性和混淆矩阵稳定性，通过实验数据表面在RHEED纹理主导场景下何种结构更适合作为共享骨干；第一组对照实验强调结构归纳偏置差异的可解释比较，其中现代CNN路线用于检验局部纹理建模优势，轻量卷积与Transformer融合路线用于检验参数受限条件下的全局建模补偿能力，简化MetaFormer路线用于检验弱归纳偏置结构在小样本与噪声条件下的稳定边界\upcite{c20,c2,mobilevit,poolformer,russakovsky2015imagenet}。本研究第二组对照实验基于固定ConvNeXt V2 Atto骨干后的初始化来源对照，在微调参数设置完全一致前提下，基于None，ImageNet，FCMAE 80，FCMAE 120，FCMAE 150五种模型权重进行纵向比较，本组对照实验核心目的是对比通用监督迁移与域内自监督迁移的贡献差异，并验证预训练epoch增加是否出现边际收益递减；此外，本组对照实验除最终测试指标外，还联合使用了验证收敛速度最优epoch稳定区间和混淆矩阵双向错分变化来进行实验结果的综合判读，以降低偶然波动干扰，只有不同证据方向一致时才给出初始化优劣判断。最后，本研究二维层状生长和三维岛状生长的RHEED图像分类分支与RHEED图像条纹和斑点检测分支共享骨干表征，第二组对照实验承担多任务可迁移性验证功能，即若域内自监督初始化在分类端体现出更稳健的RHEED图像类别边界，则其作为RHEED图像条纹和斑点目标检测骨干起点更具备合理性。总之，模型实验细节的两组对照分别回答结构选择问题与初始化选择问题，且通过统一训练预算与统一评价协议形成可复核的因果链条，确保章节结论能够被后续检测实验继续验证与继承\upcite{woo2023convnextv2,he2022mae,liu2022convnext}。
 
-\subsection{实验结果与分析}
+\subsubsection{数据集划分}
+传统图像分类任务的数据集划分被视为评估协议的一部分，其统计含义在于将参数估计、模型选择与最终泛化评估解耦，从而避免在同一数据上反复调参与反复验证导致的乐观偏差。训练集承担参数学习与表示建模，验证集承担结构选择、早停与阈值设置，测试集仅用于最终报告，从而保证模型比较具有可解释的因果含义。基准体系的长期实践表明，评估入口与划分边界若发生漂移，模型排序与绝对指标都可能发生系统性变化，因此划分策略必须以方法论控制变量的标准被明确记录，而非作为实验附注\upcite{russakovsky2015imagenet,recht2019imagenet,kohavi1995cv,cawley2010overfitting}。基于此，本研究在通用评估范式之上引入面向RHEED序列数据的专用约束，使评估目标从静态图像分类扩展到MBE过程监测所需的跨序列外推能力。为保证不同模型在统一协议下可比较，本研究同时保持数据划分、指标入口与训练预算的一致性，将“划分—训练—评估”三者作为整体链条进行控制，从而提高结论的可复核性与可迁移性\upcite{kohavi1995cv,cawley2010overfitting,recht2019imagenet}。
+
+RHEED图像序列来自MBE工艺的连续生长过程，帧间具有强时间相关性与工艺状态连续性。若采用随机逐帧划分，训练集与测试集将共享大量邻近帧，模型可能借助背景散射形态、曝光轨迹或设备噪声纹理等弱语义线索获得表面高分，而非学习二维层状生长与三维岛状生长之间具有物理意义的结构差异，这会导致对未见序列的性能被系统性高估。相关研究指出，当训练分布与测试分布存在伪相关重叠时，模型更倾向学习捷径规则，并在跨分布评估中出现明显退化；同时，标签噪声与过渡态样本的不确定性会放大该偏差，使验证最优轮次对偶然波动更敏感\upcite{torralba2011datasetbias,geirhos2020shortcut,koh2021wilds,northcutt2021confidentlearning}。因此，本研究采用严格序列级划分并明确“序列隔离”作为数据组织的基本原则，确保训练、验证与测试来自不同序列段，从数据源层面阻断近邻帧泄露通道，将模型评估从同序列记忆转向跨序列外推。
+
+在自监督预训练阶段，本研究仅使用七条训练序列构建无标签训练池，不设置预训练验证集与测试集。此设计与掩码重建和对比学习类自监督方法的通行范式一致，即预训练关注可迁移表征的学习而非直接输出分类泛化指标，预训练轮次通过预设训练预算与下游任务表现共同校验，减少对评估集的反复访问并降低隐性选择偏差\upcite{he2022mae,woo2023convnextv2,simclr,moco,byol}。在此设定下，预训练阶段重点学习RHEED条纹方向性、散射背景统计与斑点尺度特征等结构不变性，使下游微调在有限标注条件下仍具备稳定的特征起点。该策略与RHEED任务的物理属性相匹配：二维层状向三维岛状的转变具有连续演化特征，预训练所捕捉的连续性与局部纹理稳定性可为后续分类提供更鲁棒的表示基础\upcite{c1,c8,c12,c15}。
+
+在监督微调阶段，本研究采用7:1:2划分，即七条生长序列用于训练，一条序列用于验证，两条完整未见序列用于测试。验证集用于早停与超参数选择，测试集用于最终结论与模型对未见序列的真实外推评估。此配置在保证训练规模的同时保留了更高测试覆盖，以提升最终结论的可信度与工程可用性。考虑到数据中2D样本规模显著高于3D样本，本研究在指标层面同步报告Macro-F1与类内Precision/Recall，以避免多数类主导导致的乐观偏差，并通过混淆矩阵对过渡态错分进行结构性分析，以形成对比实验的统计解释闭环\upcite{kohavi1995cv,cawley2010overfitting,northcutt2021confidentlearning}。该策略与前述序列隔离原则相互配合，使模型选择与结论报告能够同时满足统计稳健性与工程解释性的双重要求。
+
+样本规模方面，预训练阶段共使用16464张无标签图像（2D为11907张、3D为4557张）进行表征学习；微调阶段训练集保持相同规模，验证集包含2902张图像（2D为1801张、3D为1101张），测试集包含6104张图像（2D为3902张、3D为2202张）。该规模在维持序列隔离的前提下保证了足够的训练样本密度，并为跨序列泛化评估提供了稳定的统计基础。对MBE过程监测而言，测试集覆盖显著高于验证集，有利于在最终结论中更真实地反映跨批次与跨成像条件的性能波动，从而提升实验的可重复性与工程可行性\upcite{c1,c8,c12,c15,koh2021wilds}。基于上述设计，本研究的数据集划分既满足方法论上的可比较要求，又能支撑后续两组对照实验在统计层面与工程层面的双重可行性评估。
+
+\begin{table}[htbp]
+    \centering
+    \caption{自监督预训练与监督微调阶段样本规模统计}
+    \label{tab:cp2_split_stats}
+    \begin{tabular}{lccc}
+        \hline
+        Subset & 2D    & 3D   & Total \\ \hline
+        PT     & 11907 & 4557 & 16464 \\
+        FT-TR  & 11907 & 4557 & 16464 \\
+        FT-VA  & 1801  & 1101 & 2902  \\
+        FT-TE  & 3902  & 2202 & 6104  \\ \hline
+    \end{tabular}
+\end{table}
+
+综上，本研究的数据集划分方案如表\ref{tab:cp2_dataset_after_trim}与表\ref{tab:cp2_split_stats}所示，预训练阶段以16464张无标签图像完成表征学习，微调阶段在保持同等训练规模的基础上配置2902张验证图像与6104张完整未见序列测试图像，形成“模型选择—最终评估—误差回溯”的闭环验证结构。该结构在保证训练充分性的同时扩大测试覆盖，使跨序列泛化评估更具统计可信度，且误分类样本可直接映射至MBE实际生长片段，为后续条纹与斑点检测分支提供可解释的局部证据入口，因此该数据规模与划分方式能够支撑本章两组对照实验的可重复性与工程可行性\upcite{kohavi1995cv,cawley2010overfitting,c1,c12,koh2021wilds}。
+
+\subsubsection{对比方法}
+
+本研究从两组对照实验设置的角度，首先系统性阐述四种模型的基本原理和应用场景，且分析ConvNeXt V2在RHEED图像分类中的较好分类表现；其次阐述在FCMAE自监督预训练下，对比ImageNet权重，具有更好的分类表现。
+
+第一组对照实验在统一训练预算下比较四种骨干，其中ConvNeXt系列的结构细节已在2.2节展开，此处重点给出其余方法的公式化描述，并建立理论机制与实验现象的对应关系\upcite{c20,c2,mobilevit,poolformer}。MobileViT将局部卷积编码与全局自注意力串联，其块级计算如下：
+\begin{equation}
+    \label{eq:cp2_mobilevit_block}
+    \left\{
+    \begin{aligned}
+        X_l & =\mathrm{Conv}_{3\times 3}(\mathrm{Conv}_{n\times n}(X));   \\
+        X_g & =\mathrm{Fold}(\mathrm{Transformer}(\mathrm{Unfold}(X_l))).
+    \end{aligned}
+    \right.
+\end{equation}
+并通过拼接融合得到输出如下：
+\begin{equation}
+    \label{eq:cp2_mobilevit_fuse}
+    Y=\mathrm{Conv}_{3\times 3}(\mathrm{Concat}(X_l,X_g)),
+\end{equation}
+其中Transformer分支的核心为多头自注意力
+\begin{equation}
+    \label{eq:cp2_mobilevit_attn}
+    \mathrm{Attn}(Q,K,V)=\mathrm{softmax}\left(\frac{QK^\top}{\sqrt{d}}\right)V,
+\end{equation}
+该结构在参数受限条件下能够补充长程依赖建模，但其全局token交互对输入统计一致性较敏感，当RHEED序列存在曝光漂移与背景散射波动时，注意力权重可能放大伪相关纹理，进而影响跨序列稳定性\upcite{mobilevit,geirhos2020shortcut,torralba2011datasetbias}。PoolFormer遵循MetaFormer范式，其块级更新如下：
+\begin{equation}
+    \label{eq:cp2_poolformer_block}
+    \left\{
+    \begin{aligned}
+        X^{\prime}       & =X+\mathrm{TokenMixer}(\mathrm{LN}(X));            \\
+        X^{\prime\prime} & =X^{\prime}+\mathrm{MLP}(\mathrm{LN}(X^{\prime})).
+    \end{aligned}
+    \right.
+\end{equation}
+其中token混合采用无参数池化差分如下：
+\begin{equation}
+    \label{eq:cp2_poolformer_mix}
+    \mathrm{TokenMixer}(X)=\mathrm{AvgPool}(X)-X,
+\end{equation}
+该设计通过弱化复杂注意力获得较好效率与优化稳定性，但全局关系表达主要依赖局部统计平滑，在RHEED过渡态中易削弱弱条纹与早期斑点等低占比判别线索\upcite{poolformer}。结合第一组对照结果，非崩塌模型中ConvNeXt V2 Atto在测试集Acc与Macro F1上保持最优，MobileViT次之，PoolFormer出现明显类别塌缩，这与上述两类模型在纹理保真能力与全局建模方式上的理论差异一致，说明RHEED分类更依赖稳定的局部归纳偏置与分层特征表达，而非仅依赖轻量全局混合\upcite{c20,poolformer,mobilevit}。
+
+基于第二组对照实验设置，在固定ConvNeXt V2 Atto骨干后，本研究将系统比较不同初始化策略在RHEED时序图像分类中的适配性差异。具体而言，以ImageNet监督预训练权重，FCMAE域内自监督预训练权重与随机初始化作为对照，通过Acc，Macro F1，类别级F1与混淆矩阵联合评估初始化来源对决策边界质量的影响。该设计的目标不是仅比较总体分数高低，而是检验不同初始化是否能够在2D与3D两类上同时保持稳定识别能力，并降低过渡区间的双向错分风险。
+从方法机理看，FCMAE在RHEED场景具有明确的先验优势。首先，高比例掩码重建迫使编码器由可见局部推断缺失区域，有助于学习条纹连续性，斑点离散性与背景散射渐变之间的结构约束，这与2D到3D连续演化过程具有较高一致性。其次，在标注序列有限而无标注帧相对充足的条件下，自监督预训练可将优化重点前移到表征学习阶段，从而降低微调阶段对少量标签噪声的敏感性，并在一定程度上缓解过拟合。最后，卷积骨干在掩码建模中持续接收局部邻域约束，理论上更有利于强化弱条纹边缘，斑点形态与局部能量分布等细粒度结构响应，这不仅服务于分类边界学习，也为后续共享骨干的条纹斑点检测分支提供更可迁移的中层特征基础。相关结论在医学与视频场景的掩码自监督研究中已有支持\upcite{tang2022swinmedssl,tong2022videomae}。
+
+综合前述对比方法可知，本研究将ConvNeXt V2与FCMAE组合作为主线方案，核心动机在于同时解决RHEED时序图像中的结构表征与初始化适配问题。第一组结构对照已覆盖强卷积归纳偏置，轻量化局部全局融合与简化token混合三类路线，能够为骨干选择提供可解释的参照边界\upcite{c20,c2,mobilevit,poolformer,russakovsky2015imagenet}。在此基础上，ConvNeXt V2保留卷积对局部纹理与中尺度结构的稳定建模能力，并通过归一化与块结构优化提升训练稳定性，使其更契合条纹与斑点共存且噪声扰动显著的RHEED数据分布\upcite{c20,woo2023convnextv2,liu2022convnext}。进一步地，FCMAE在目标域无标注序列上通过掩码重建学习结构不变性，可缓解ImageNet监督先验与RHEED衍射统计之间的域差异，使微调阶段的分类头在更贴近任务物理语义的特征空间中完成边界学习，从而在过渡态与低信噪样本上具备取得更好分类效果的机制基础\upcite{he2022mae,woo2023convnextv2,tang2022swinmedssl,tong2022videomae}。
+
+
+\subsection{实验过程与实验结果分析}
 \label{subsec:cp2_results}
 
-\subsubsection{自监督预训练的有效性分析}
-为了验证自监督学习对RHEED特征提取的贡献，我们对比了四种不同初始化策略在相同测试集上的表现。实验结果如表\ref{tab:cp2_weight_compare}所示。
+本小节对RHEED图像分类任务的实验过程和实验结果进行系统性呈现与分析。具体地，首先分析FCMAE自监督预训练的实验过程与结果，说明骨干表征在一定的epoch下如何逐步稳定；其次在固定权重和固定模型的两组对照中，比较不同模型与不同权重的收敛稳定性和类别均衡性；最后以统一指标体系对实验结果进行分析，验证ConvNeXt V2与FCMAE自监督预训练权重的组合更贴近RHEED图像物理纹理统计和适合RHEED图像分类任务执行。
 
-\begin{table}[h]
-\centering
-\caption{不同预训练权重在测试集上的分类性能对比（基于ConvNeXt V2 Atto）}
-\label{tab:cp2_weight_compare}
-\begin{tabular}{lccccc}
-\hline
-\textbf{权重来源} & \textbf{预训练Epoch} & \textbf{Val Acc(\%)} & \textbf{Test Acc(\%)} & \textbf{Test F1(\%)} & \textbf{提升幅度} \\ \hline
-None (Scratch) & - & 81.98 & 82.31 & 81.32 & Baseline \\
-ImageNet & - & 84.08 & 83.73 & 82.80 & +1.42\% \\
-SSL (Ours) & 80 & 88.97 & 88.70 & 87.96 & +6.39\% \\
-\textbf{SSL (Ours)} & \textbf{120} & \textbf{91.97} & \textbf{91.71} & \textbf{91.13} & \textbf{+9.40\%} \\
-SSL (Ours) & 150 & 92.07 & 91.99 & 91.43 & +9.68\% \\ \hline
-\end{tabular}
+% 紧凑排版：适度压缩浮动体与正文、图题之间间距，减少上下留白
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{0pt}
+
+\subsubsection{基于FCMAE的自监督预训练}
+
+首先，本部分围绕FCMAE自监督预训练的收敛行为展开讨论，作为后续微调对照的起点。FCMAE自监督预训练阶段以掩码重建为核心，在掩码集合上最小化$\mathcal{L}_{\mathrm{mae}}$，并联合$\mathcal{L}_{\mathrm{recon}}$约束频域与结构一致性，同时在掩码比例$\rho=0.6$且稀疏卷积门控固定的条件下，将三组实验的主要变量控制为训练epoch数。因此，损失曲线的阶段性变化可直接对应编码器由低阶强度统计到高阶结构约束的学习进程，并可作为共享骨干是否形成稳定迁移表征的判据。图\ref{fig:cp2_fcmae_loss_3x1}展示了FCMAE自监督预训练80、120和150epoch的$\mathrm{FCMAE Loss}$变化，子图(a)至(c)的曲线纵轴数值分别为80、120和150epoch的$\mathrm{FCMAE Loss}$，其物理含义是掩码重建误差的平均水平，数值越低表示编码器与解码器对RHEED结构信息的恢复越充分，可用于衡量自监督预训练表征的收敛质量。此外，子图(a)至(c)的起始值分别为4.0864，4.0864，4.0864，在第20轮分别降至1.9344，1.9336，1.9439，对应降幅分别为$52.66\%$，$52.68\%$，$52.42\%$，表明FCMAE自监督预训练在早期的epoch中已快速进入有效学习阶段；同时FCMAE自监督预训练的$\mathrm{FCMAE Loss}$快速下降阶段为$\mathcal{L}_{\mathrm{mae}}$对可见区域邻域统计的拟合。进入80epoch后，FCMAE自监督预训练实验开始呈现可分辨差异，80epoch的实验终点为1.1607；120epoch实验在第80轮已降至1.1241，并在第120轮继续降至0.9264；150轮实验在第80epoch为1.1092，第120轮为0.9100，第150轮为0.8226；以150epoch的同程节点衡量，80到120epoch阶段再下降0.1991，降幅约$17.9\%$，120到150epoch阶段下降0.0874，降幅约$9.6\%$，后30epoch边际收益明显减小。综上，图\ref{fig:cp2_fcmae_loss_3x1}表明$\mathrm{FCMAE Loss}$趋势与FCMAE机制一致，即中期训练重点由低频重建转向条纹间距、斑点尺度和局部方向性的联合约束，高阶图像信息仍可学习但需要更长epoch迭代。
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/fcmae_loss_curve_pretrain_fcmae_20260223_132829_80.png}
+
+        \vspace{0.05em}
+        {\small a) 80 epoch}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/fcmae_loss_curve_pretrain_fcmae_20260223_150207_120.png}
+
+        \vspace{0.05em}
+        {\small b) 120 epoch}
+    \end{minipage}
+
+    \vspace{0.55em}
+
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/fcmae_loss_curve_pretrain_fcmae_20260223_205736_150.png}
+
+        \vspace{0.05em}
+        {\small c) 150 epoch}
+    \end{minipage}
+    \caption{FCMAE自监督预训练不同epoch的$\mathrm{FCMAE Loss}$曲线}
+    \label{fig:cp2_fcmae_loss_3x1}
+    \vspace{-0.25em}
+\end{figure}
+
+其次，图\ref{tab:cp2_fcmae_quadruplet_2d}和图\ref{tab:cp2_fcmae_quadruplet_3d}的残差热力图表面，RHEED图像高色阶区域主要集中在条纹边缘与高亮斑点邻域，低色阶区域主要位于大面积背景散射区，这与$\mathcal{L}_{\mathrm{recon}}$强调结构一致性而非逐像素复制的目标一致\upcite{wilkinson2009clusterheatmap}。
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.24\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/2d_src_600.png}
+
+        \vspace{0.05em}
+        {\small a) source image}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.24\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/2d_src_600_grid_mask_gray.png}
+
+        \vspace{0.05em}
+        {\small b) 0.6 masked image}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.24\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/2d_dst_600_grid_mask_orange_alpha0.20.png}
+
+        \vspace{0.05em}
+        {\small c) fcmae reconstruction image}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.24\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/residual_heatmap_2d_600.png}
+
+        \vspace{0.05em}
+        {\small d) residual heat map}
+    \end{minipage}
+    \caption{二维层状生长RHEED图像FCMAE重建四联图}
+    \label{tab:cp2_fcmae_quadruplet_2d}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.24\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/3d_src_950.png}
+
+        \vspace{0.05em}
+        {\small a) source image}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.24\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/3d_src_950_grid_mask_gray.png}
+
+        \vspace{0.05em}
+        {\small b) 0.6 masked image}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.24\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/3d_dst_950_grid_mask_orange_alpha0.20.png}
+
+        \vspace{0.05em}
+        {\small c) reconstruction image}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.24\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/residual_heatmap_3d_950.png}
+
+        \vspace{0.05em}
+        {\small d) residual heat map}
+    \end{minipage}
+    \caption{三维岛状生长RHEED图像FCMAEFCMAE重建四联图}
+    \label{tab:cp2_fcmae_quadruplet_3d}
+\end{figure}
+
+为便于量化分析，本研究记残差为$R=Y_{\mathrm{observed}}-Y_{\mathrm{predicted}}$，其中$Y_{\mathrm{observed}}$表示RHEED原图强度，$Y_{\mathrm{predicted}}$表示FCMAE重建强度，$R$用于刻画模型未能解释的局部结构偏差及其空间分布。在二维层状生长与三维岛状生长的四联图构成中，本研究分别以两种生长方式中选取具有代表性的帧进行展示，对比不同结构形态下的重建误差分布特征。以2d image1与3d image1为例，2d image1样本MAE为1.62，P99为9.00，NMAE为6.37e-3，3d image1样本MAE为0.66，P99为3.00，NMAE为2.59e-3，且在残差均值接近零的近似下，其标准差可由$\sigma_R\approx\mathrm{RMSE}$估计，分别为2.45与0.99，表明二维代表帧的残差波动更强。进一步结合极差指标，残差绝对值范围可记为$[0,\mathrm{MaxAbs}]$，其中2d image1与3d image1分别为$[0,36.00]$和$[0,21.00]$，说明二维代表帧在高频结构处存在更大的局部偏差。该分布差异与模型评估中对误差分布而非单一均值的关注一致\upcite{davis2006relationship}，并与薄膜生长过程中二维条纹结构对局部扰动更敏感的热力学与动力学认识相符\upcite{burton1951crystal}。结合损失曲线可进一步推断，80epoch阶段主要消除全局误差，120epoch阶段显著压缩结构误差，150epoch阶段继续降低极值误差且总体收益趋缓。
+
+\begin{table}[H]
+    \centering
+    \caption{基于残差热力图输出日志的重建误差统计}
+    \label{tab:cp2_fcmae_residual_metrics}
+    \small
+    \begin{tabular}{lcccccc}
+        \toprule
+        sample    & MAE  & RMSE & P95  & P99  & MaxAbs & NMAE    \\
+        \midrule
+        2d image1 & 1.62 & 2.45 & 5.00 & 9.00 & 36.00  & 6.37e-3 \\
+        2d image2 & 1.39 & 1.87 & 4.00 & 6.00 & 15.00  & 5.44e-3 \\
+        3d image1 & 0.66 & 0.99 & 2.00 & 3.00 & 21.00  & 2.59e-3 \\
+        3d image2 & 0.80 & 1.25 & 2.00 & 4.00 & 41.00  & 3.15e-3 \\
+        \bottomrule
+    \end{tabular}
 \end{table}
 
-\textbf{结果分析}：
-\begin{enumerate}
-    \item \textbf{ImageNet迁移受限}：相比从头训练（82.31\%），ImageNet权重仅带来约1.4\%的提升。这表明自然图像的特征（如猫、狗、汽车）与RHEED衍射图样（高频条纹、光斑）存在巨大的域差异（Domain Gap），通用特征难以直接迁移。
-    \item \textbf{SSL效果显著}：经过120轮自监督预训练的模型，测试集准确率跃升至 **91.71\%**，相比Baseline提升近 **9.4\%**。这证明模型在无监督阶段成功捕捉到了RHEED图像的物理结构规律。
-    \item \textbf{训练效率}：120 Epoch与150 Epoch性能差异微小（<0.3\%），表明120轮预训练已接近性能饱和点，是性价比最优的选择。
-\end{enumerate}
 
-\subsubsection{不同轻量级骨干网络的对比}
-为论证ConvNeXt V2架构的优越性，我们将其与同量级的MobileViT、ConvNeXt V1及PoolFormer进行了横向对比（均使用ImageNet权重初始化以便公平比较架构差异）。
+综上，基于当前RHEED图像序列数据规模下，120 epoch可作为FCMAE预训练长度的均衡选择，即80到120阶段仍处于有效结构学习区，而120到150阶段逐步进入长尾细化区，继续训练主要体现在极值误差的缓慢下降而非整体误差的大幅改善，该现象与掩码重建自监督在视觉任务中的规律一致，且与ConvNeXt V2中FCMAE和GRN协同提升迁移稳定性的结论一致\upcite{he2022mae,xie2022simmim,woo2023convnextv2}。此外，从多任务协同角度看，该阶段形成的结构先验不仅可在后续分类微调中提供更稳定的类别边界，也可作为条纹与斑点检测分支的共享骨干初始化，从而在统一表征空间中同时支撑宏观生长模式判别与局部结构定位。
 
-\begin{table}[h]
-\centering
-\caption{主流轻量级模型性能对比（ImageNet初始化）}
-\label{tab:cp2_models_compare}
-\begin{tabular}{lcccc}
-\hline
-\textbf{模型架构} & \textbf{参数量(M)} & \textbf{Test Acc(\%)} & \textbf{Test F1(\%)} & \textbf{稳定性说明} \\ \hline
-PoolFormerV2-S12 & 11.38 & 63.93 & 39.00 & \textbf{严重过拟合/崩塌} \\
-MobileViT-XXS & 0.95 & 81.18 & 80.16 & Transformer收敛较慢 \\
-ConvNeXt-Zepto & 1.90 & 79.67 & 78.62 & 缺乏GRN层 \\
-\textbf{ConvNeXt V2-Atto} & 3.39 & \textbf{83.73} & \textbf{82.80} & \textbf{最佳平衡} \\ \hline
-\end{tabular}
+
+\subsubsection{基于ImageNet权重下的不同分类方法}
+本部分主要内容为详细阐述RHEED图像分类任务的第一组对照实验结果，即在相同ImageNet权重初始化与相同微调参数下，比较四种骨干网络在二维层状生长和三维岛状生长的RHEED图像分类表现，初始化权重一致与相同微调参数的设计，有效地分离网络结构差异对RHEED阶段识别的影响，且为后续RHEED图像条纹和斑点目标检测任务选择共享骨干提供可复现依据。
+
+基于统一ImageNet权重与相同微调参数设置，本研究使用分类任务的标准指标来描述第一组对照实验的结果。具体地，CE与Top-1 Acc描述分类模型地优化过程与泛化表现，此定义与主流视觉分类评估范式一致\upcite{c20,c2}。令第\(t\)轮训练样本数为\(N_t\), 类别数为\(C\), 第\(i\)个样本对第\(c\)类的真实标签为\(y_{i,c}\), 预测概率为\(p_{i,c}\), 则CE定义如下：
+\begin{equation}
+    \mathcal{L}_{\mathrm{train}}^{(t)}=-\frac{1}{N_t}\sum_{i=1}^{N_t}\sum_{c=1}^{C}y_{i,c}\log p_{i,c},
+\end{equation}
+Top-1 Train Acc定义如下：
+\begin{equation}
+    \mathrm{Acc}_{\mathrm{train}}^{(t)}=\frac{1}{N_t}\sum_{i=1}^{N_t}\mathbb{I}\!\left(\arg\max_{c}p_{i,c}=y_i\right)\times 100,
+\end{equation}
+验证阶段采用同一判别准则得到Top-1 Val Acc，仅将样本集合替换为验证集。
+
+\begin{table}[H]
+    \centering
+    \caption{ImageNet初始化微调的关键epoch指标}
+    \label{tab:cp2_finetune_key_epochs_imagenet}
+    \begin{tabular}{l l c c c}
+        \toprule
+        Model                             & Stage           & Epoch & Train Loss & Val Acc (\%) \\
+        \midrule
+        \multirow{3}{*}{ConvNeXt-Zepto}   & Initial         & 1     & 0.65       & 73.26        \\
+                                          & Mid             & 25    & 0.32       & 78.33        \\
+                                          & Converged       & 37    & 0.19       & 80.01        \\
+        \midrule
+        \multirow{3}{*}{ConvNeXt V2-Atto} & Initial         & 1     & 0.48       & 76.15        \\
+                                          & Mid             & 25    & 0.20       & 82.53        \\
+                                          & Converged       & 35    & 0.16       & 84.08        \\
+        \midrule
+        \multirow{3}{*}{MobileViT-XXS}    & Initial         & 1     & 0.75       & 70.95        \\
+                                          & Mid             & 25    & 0.29       & 80.50        \\
+                                          & Converged       & 32    & 0.26       & 82.08        \\
+        \midrule
+        \multirow{3}{*}{PoolFormerV2-S12} & Initial         & 1     & 0.84       & 82.63        \\
+                                          & Mid (Peak)      & 23    & 2.37       & 89.80        \\
+                                          & Late (Collapse) & 25    & 2.52       & 62.06        \\
+        \bottomrule
+    \end{tabular}
 \end{table}
 
-\textbf{分析与讨论}：
-\begin{itemize}
-    \item \textbf{PoolFormer的崩塌}：尽管PoolFormer在自然图像上表现优异，但在本实验中出现了严重的训练崩塌（Acc跌至63.93\%）。分析Loss曲线发现其训练极其不稳定，震荡剧烈，说明MetaFormer架构对超参数敏感，且极易在小样本RHEED数据上过拟合。
-    \item \textbf{ConvNeXt V2的稳健性}：ConvNeXt V2不仅准确率最高（83.73\%），且训练曲线平滑收敛。对比ConvNeXt V1（79.67\%），V2引入的GRN层带来了约4\%的提升，证实了特征通道归一化对RHEED弱纹理特征提取的重要性。
-\end{itemize}
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/curves_convnext_zepto_rms_imagenet.png}
+
+        \vspace{0.05em}
+        {\small a) ConvNeXt-Zepto}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/curves_convnextv2_atto_imagenet.png}
+
+        \vspace{0.05em}
+        {\small b) ConvNeXtV2-Atto}
+    \end{minipage}
+
+    \vspace{0.55em}
+
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/curves_mobilevit_xxs_imagenet.png}
+
+        \vspace{0.05em}
+        {\small c) MobileViT-XXS}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/curves_poolformerv2_s12_imagenet.png}
+
+        \vspace{0.05em}
+        {\small d) PoolFormerV2-S12}
+    \end{minipage}
+    \caption{ImageNet权重不同模型微调的Train Loss和Acc曲线}
+    \label{fig:cp2_curves_models_imagenet_4x1}
+    \vspace{-0.5em}
+\end{figure}
+
+如表\ref{tab:cp2_finetune_key_epochs_imagenet}的关键epoch统计和图\ref{fig:cp2_curves_models_imagenet_4x1}的曲线形态所示，本研究进一步从阶段演化角度分析各模型在RHEED图像分类任务中的优化过程与泛化差异。具体地，ConvNeXt-Zepto在初始阶段CE为0.65、Val Acc为$73.26\%$，到中期epoch，CE降至0.32且Val Acc升至$78.33\%$，收敛阶段达到0.19和$80.01\%$，如图\ref{fig:cp2_curves_models_imagenet_4x1}的a子图所示，先快速优化，然后模型伴随轻微抖动的轨迹；ConvNeXt V2-Atto由0.48和$76.15\%$提升至0.20和$82.53\%$，并在epoch 35达到0.16和$84.08\%$，如图\ref{fig:cp2_curves_models_imagenet_4x1}的子图b所示，曲线表现为更平滑的收敛与更稳定的高位平台，说明该骨干在优化稳定性与泛化性能之间取得了更优平衡；MobileViT-XXS从0.75和$70.95\%$提升到0.29和$80.50\%$，最终在epoch 32达到0.26和$82.08\%$，如图\ref{fig:cp2_curves_models_imagenet_4x1}的子图c所示，呈现持续上升后小幅振荡的趋势，体现出有效学习但后期抗扰动能力弱于ConvNeXt V2-Atto；相比之下，PoolFormerV2-S12呈现显著不同的失稳路径，如图\ref{fig:cp2_curves_models_imagenet_4x1}的子图d所示，在epoch23虽达到$89.80\%$的阶段峰值，但CE已抬升至2.37，随后在epoch25进一步恶化为2.52与$62.06\%$，此现象表明模型在验证阶段退化为全部预测多数类的类别坍塌，相较前三个骨干，PoolFormerV2-S12具备更大的参数规模，在当前小规模RHEED数据上更易放大类别先验并形成偏置决策边界，表现为训练可继续拟合而验证迅速反转\upcite{poolformer,cawley2010overfitting,prechelt1998,touvron2021deit}。因此，在当前数据规模与类别结构约束下，大参数模型并不适合作为RHEED分类任务的优先方案。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.84\textwidth]{figure/cp2/val_acc_comparison_models_imagenet.png}
+    \caption{ImageNet初始化下四种模型的验证集Acc对比曲线}
+    \label{fig:cp2_valacc_models_imagenet}
+\end{figure}
+
+为便于从总体趋势层面对比不同骨干网络，本研究给出统一坐标下的验证集Acc汇总曲线，如图\ref{fig:cp2_valacc_models_imagenet}所示，该汇总视角可在同一判读尺度下比较各模型的曲线变化速度、峰值位置与平台稳定性，降低由分图坐标差异带来的主观偏差，从而更高效地识别模型稳定收敛的分类表现。
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/cm_poolformerv2_s12_imagenet_best.png}
+
+        \vspace{0.2em}
+        {\small a) PoolFormerV2-S12}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/cm_convnext_zepto_rms_imagenet_best.png}
+
+        \vspace{0.2em}
+        {\small b) ConvNeXt-Zepto}
+    \end{minipage}
+
+    \vspace{0.6em}
+
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/cm_mobilevit_xxs_imagenet_best.png}
+
+        \vspace{0.2em}
+        {\small c) MobileViT-XXS}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/cm_convnextv2_atto_imagenet_best.png}
+
+        \vspace{0.2em}
+        {\small d) ConvNeXt V2-Atto}
+    \end{minipage}
+    \caption{ImageNet初始化下四种模型验证集最优混淆矩阵对比}
+    \label{fig:cp2_cm_models_imagenet_best_2x2}
+\end{figure}
+
+本研究为了更可观地展示不同模型在RHEED图像分类任务的验证集上具体的分类表现，基于对应模型在验证集的分类结果，绘制了其对应的混淆矩阵图，如图\ref{fig:cp2_cm_models_imagenet_best_2x2}所示，第一组实验的模型差异不仅体现在总体精度，也体现在错分结构中。具体地，二分类混淆矩阵\([a,b;c,d]\)，\(a\)表示2D样本被正确判为2D，\(b\)表示2D样本被误判为3D，\(c\)表示3D样本被误判为2D，\(d\)表示3D样本被正确判为3D；基于此定义，\(b\)与\(c\)直接刻画分类模型的2D末期与3D早期过渡样本的边界混淆强度。对比四个模型，ConvNeXt V2-Atto在\([1515,286;176,925]\)下同时保持较低\(b\)与\(c\)，其Val Acc与Macro-F1均优于其余稳定模型，表明其决策边界更均衡且泛化更稳；ConvNeXt-Zepto的\([1442,359;221,880]\)混淆矩阵与MobileViT-XXS的\([1478,323;197,904]\)混淆矩阵中，双向混淆较明显；PoolFormerV2-S12在阶段峰值较高，但后期出现单类预测坍塌，反映其在当前数据规模下的泛化不稳定。
+
+综上，基于对表\ref{tab:cp2_finetune_key_epochs_imagenet}、图\ref{fig:cp2_curves_models_imagenet_4x1}、图\ref{fig:cp2_valacc_models_imagenet}和图\ref{fig:cp2_cm_models_imagenet_best_2x2}展示的不同模型在RHEED图像分类任务上的验证集表现，不难分析出，在统一ImageNet初始化与相同微调设置下，不同骨干的差异主要体现在收敛稳定性与过渡样本边界判别能力。ConvNeXt V2 Atto在训练中后期保持更平滑的损失下降与更稳定的验证平台，同时在混淆矩阵中兼顾较低的二维层状生长与三维岛状生长图像分类的误判，验证了其不仅依赖单类偏置获得指标提升，且形成了更均衡的决策边界。具体地，相较于其它分类模型，ConvNeXt Zepto与MobileViT XXS虽能达到可用精度，但边界样本双向混淆仍较明显，PoolFormerV2 S12则出现后期类别坍塌，反映其在当前数据规模下泛化鲁棒性不足。结合RHEED生长阶段连续演化的任务特性，本研究据此选择ConvNeXt V2 Atto作为分类主干，并作为后续条纹与斑点检测分支的共享特征提取网络，从而为MBE过程中的宏观阶段分类判别与局部结构目标检测提供一致表征基础\upcite{woo2023convnextv2,kwoen2020rheed,khairehwalieh2023deoxidation}。
+
+
+\subsubsection{基于ConvNeXt V2的不同初始化权重}
+本部分基于2.5.2不同模型在RHEED图像分类任务的表现结果，比较不同初始化权重对ConvNeXt V2 Atto微调分类性能的影响。具体地，在保持网络结构ConvNeXt V2 Atto与微调预训练参数一致的前提下，对比ImageNet，FCMAE 80，FCMAE 120与FCMAE 150四组初始化权重在验证集的分类表现，且补充无预训练权重基线对照实验，以分离初始化权重差异对阶段识别结果的贡献，为后续共享骨干在RHEED图像分类与RHEED图像条纹和斑点目标检测任务中的初始化权重选择提供可复现实验依据。
+
+
+\begin{table}[H]
+    \centering
+    \caption{ConvNeXt V2-Atto下不同初始化权重微调的关键epoch指标}
+    \label{tab:cp2_finetune_key_epochs_weights}
+    \begin{tabular}{l l c c c}
+        \toprule
+        Weights                    & Stage     & Epoch & Train Loss & Val Acc (\%) \\
+        \midrule
+        \multirow{3}{*}{None}      & Initial   & 1     & 0.61       & 71.71        \\
+                                   & Mid       & 25    & 0.30       & 79.98        \\
+                                   & Converged & 41    & 0.17       & 81.98        \\
+        \midrule
+        \multirow{3}{*}{ImageNet}  & Initial   & 1     & 0.48       & 76.15        \\
+                                   & Mid       & 25    & 0.20       & 82.53        \\
+                                   & Converged & 35    & 0.16       & 84.08        \\
+        \midrule
+        \multirow{3}{*}{FCMAE-80}  & Initial   & 1     & 0.57       & 77.71        \\
+                                   & Mid       & 25    & 0.18       & 86.77        \\
+                                   & Converged & 35    & 0.11       & 88.97        \\
+        \midrule
+        \multirow{3}{*}{FCMAE-120} & Initial   & 1     & 0.46       & 78.77        \\
+                                   & Mid       & 24    & 0.20       & 88.77        \\
+                                   & Converged & 37    & 0.11       & 91.97        \\
+        \midrule
+        \multirow{3}{*}{FCMAE-150} & Initial   & 1     & 0.44       & 79.29        \\
+                                   & Mid       & 25    & 0.16       & 89.46        \\
+                                   & Converged & 35    & 0.09       & 92.07        \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/curves_convnextv2_atto_none.png}
+
+        \vspace{0.06em}
+        {\small a) None}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/curves_convnextv2_atto_imagenet.png}
+
+        \vspace{0.06em}
+        {\small b) ImageNet}
+    \end{minipage}
+
+    \vspace{0.55em}
+
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/curves_convnextv2_atto_fcmae80.png}
+
+        \vspace{0.06em}
+        {\small c) FCMAE-80}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/curves_convnextv2_atto_fcmae120.png}
+
+        \vspace{0.06em}
+        {\small d) FCMAE-120}
+    \end{minipage}
+
+    \vspace{0.55em}
+
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/curves_convnextv2_atto_fcmae150.png}
+
+        \vspace{0.06em}
+        {\small e) FCMAE-150}
+    \end{minipage}
+
+    \caption{ConvNeXt V2-Atto在不同初始化权重微调的Train Loss和Acc曲线}
+    \label{fig:cp2_curves_atto_weights_3p2}
+\end{figure}
+
+如表\ref{tab:cp2_finetune_key_epochs_weights}的关键epoch统计和图\ref{fig:cp2_curves_atto_weights_3p2}的曲线形态所示，本研究进一步从阶段演化角度分析同一骨干在不同初始化权重下的优化过程与泛化差异。具体地，None从初始阶段CE为0.61、Val Acc为$71.71\%$起步，到中期epoch 25提升至0.30和$79.98\%$，并在epoch 41收敛至0.17和$81.98\%$，如图\ref{fig:cp2_curves_atto_weights_3p2}的子图a所示，整体存在更长的收敛尾段与更明显的平台抖动；ImageNet由0.48和$76.15\%$提升至0.20和$82.53\%$，并在epoch 35达到0.16和$84.08\%$，如图\ref{fig:cp2_curves_atto_weights_3p2}的子图b所示，表现出相对平滑且稳定的收敛轨迹；FCMAE-80从0.57和$77.71\%$提升到0.18和$86.77\%$，最终在epoch 35达到0.11和$88.97\%$，如图\ref{fig:cp2_curves_atto_weights_3p2}的子图c所示，在中后期保持更高验证平台；FCMAE-120由0.46和$78.77\%$快速提升至0.20和$88.77\%$，并在epoch 37达到0.11和$91.97\%$，如图\ref{fig:cp2_curves_atto_weights_3p2}的子图d所示，表现出更快爬升与更低振荡；FCMAE-150由0.44和$79.29\%$提升至0.16和$89.46\%$，并在epoch 35达到0.09和$92.07\%$，如图\ref{fig:cp2_curves_atto_weights_3p2}的子图e所示，兼具最低训练损失与最高验证精度。总体上，相较无预训练与通用ImageNet初始化，基于掩码重建的FCMAE自监督预训练（FCMAE-80/120/150）在RHEED任务中展现出更高的优化效率和更强的收敛稳定性，说明初始化表征与下游数据分布一致性对小样本场景的泛化性能具有关键影响\upcite{woo2023convnextv2,he2022mae,xie2022simmim,dino2021}。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.84\textwidth]{figure/cp2/val_acc_comparison_convnextv2_atto_weights.png}
+    \caption{ConvNeXt V2 Atto在不同初始化权重的验证集ACC曲线}
+    \label{fig:cp2_valacc_atto_weights}
+\end{figure}
+
+为便于从总体趋势对比ConvNeXt V2 Atto在不同初始化权重下的收敛行为，本研究给出统一坐标下的验证集Acc汇总曲线，如图\ref{fig:cp2_valacc_atto_weights}所示，该汇总视角可在同一判读尺度下比较各权重方案的曲线变化速度、峰值位置与平台稳定性。具体地，None整体平台最低且收敛尾段较长，ImageNet处于中间水平，而FCMAE-80/120/150呈现更高平台与更稳态收敛，其中FCMAE-150保持最高验证精度，该对比可有效降低由分图坐标差异引入的主观偏差，从而更直接地验证FCMAE自监督预训练的权重初始化在RHEED小样本分类任务中的优势。
+
+\begin{figure}[H]
+    \centering
+    % 第1行：上三图
+    \begin{minipage}[t]{0.31\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/cm_convnextv2_atto_none_best.png}
+
+        \vspace{0.2em}
+        {\small a) None}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.31\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/cm_convnextv2_atto_imagenet_best.png}
+
+        \vspace{0.2em}
+        {\small b) ImageNet}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.31\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figure/cp2/cm_convnextv2_atto_fcmae80_best.png}
+
+        \vspace{0.2em}
+        {\small c) FCMAE-80}
+    \end{minipage}
+
+    \vspace{0.55em}
+
+    % 第2行：下两图居中
+    \makebox[\textwidth][c]{
+        \begin{minipage}[t]{0.31\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{figure/cp2/cm_convnextv2_atto_fcmae120_best.png}
+
+            \vspace{0.2em}
+            {\small d) FCMAE-120}
+        \end{minipage}
+        \hspace{0.04\textwidth}
+        \begin{minipage}[t]{0.31\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{figure/cp2/cm_convnextv2_atto_fcmae150_best.png}
+
+            \vspace{0.2em}
+            {\small e) FCMAE-150}
+        \end{minipage}
+    }
+
+    \caption{ConvNeXt V2-Atto在不同初始化权重下的验证集最优混淆矩阵对比}
+    \label{fig:cp2_cm_atto_weights_best_2x2}
+\end{figure}
+
+本研究为了更可观地展示ConvNeXt V2 Atto在不同初始化权重下于RHEED图像分类任务验证集上的具体分类表现，基于对应权重在验证集的预测结果绘制混淆矩阵图，如图\ref{fig:cp2_cm_atto_weights_best_2x2}所示。具体地，二分类混淆矩阵\([a,b;c,d]\)中，\(a\)表示2D样本被正确判为2D，\(b\)表示2D样本被误判为3D，\(c\)表示3D样本被误判为2D，\(d\)表示3D样本被正确判为3D；据此，\(b\)与\(c\)可直接刻画2D末期与3D早期过渡样本的边界混淆强度。对比五组初始化权重可见：None为\([1475,326;\allowbreak197,904]\)，双向混淆仍较明显；ImageNet提升至\([1515,286;\allowbreak176,925]\)，边界判别已有改善；FCMAE-80进一步提升为\([1601,200;\allowbreak120,981]\)，\(b\)与\(c\)同步下降；FCMAE-120达到\([1655,146;\allowbreak87,1014]\)，在保持高召回的同时显著抑制跨类误判；FCMAE-150为\([1658,143;\allowbreak87,1014]\)，在五组权重中保持最低\(b\)与并列最低\(c\)，对应最优Val Acc平台。该结果表明，随着初始化从无预训练、通用监督预训练到同域自监督预训练逐步迁移，模型决策边界由相对粗糙转向更均衡、更稳定，尤其在2D/3D过渡态样本上表现出更强鲁棒性，与前述Acc曲线和关键epoch统计结论一致。
+
+
+综上，基于对表\ref{tab:cp2_finetune_key_epochs_weights}、图\ref{fig:cp2_curves_atto_weights_3p2}、图\ref{fig:cp2_valacc_atto_weights}和图\ref{fig:cp2_cm_atto_weights_best_2x2}展示的同一骨干在RHEED图像分类任务上的验证集表现，不难分析出，在统一ConvNeXt V2 Atto结构与相同微调设置下，初始化权重差异主要体现在收敛效率、验证平台高度与过渡样本边界判别能力。FCMAE-120与FCMAE-150在训练中后期均保持低损失与高验证平台，且在混淆矩阵中同为最低3D误判项\(c\)；其中FCMAE-150仅在2D误判项\(b\)上较FCMAE-120减少3个样本，整体性能差异已接近统计波动范围，二者可视为几乎一致。具体地，相较于ImageNet与None，FCMAE-80/120/150均呈现更快的验证精度爬升与更低的跨类混淆。在此基础上，FCMAE-120以更低预训练成本获得与FCMAE-150近乎等效的分类效果，有着更优的精度与计算开销折中表现。结合RHEED生长阶段连续演化的任务特性与后续多任务共享骨干的工程部署需求，本研究据此选择FCMAE-120作为分类主干的优选初始化权重，并用于后续RHEED图像条纹与斑点目标检测分支的共享特征提取初始化，从而在保证宏观阶段分类判别与局部结构目标检测性能的同时，降低整体训练与迁移成本\upcite{woo2023convnextv2,he2022mae,xie2022simmim,dino2021,tan2019efficientnet,radosavovic2020designing}。
+
+\subsubsection{实验结果分析}
+
+本部分基于2.5.2和2.5.3主要内容阐述，讨论两组对照实验的所有不同模型和不同权重组合下的微调模型结果，在RHEED图像分类任务的验证集和测试集性能表现结果进行统一汇总与对比分析，两组对照实验保持预训练来源、数据划分、微调流程与评价指标完全一致，有效地保证组间结论具有可比性。具体地，首先讨论同一初始化权重下不同骨干模型在验证集与测试集的分类性能，其次讨论ConvNeXt V2 Atto模型在不同初始化权重下的验证集与测试集的分类性能，最后在统一实验条件下综合评估结构因素与初始化因素对结果的影响，给出最终的RHEED图像分类方法选择。
+
+\begin{table}[H]
+    \centering
+    \caption{ImageNet权重ConvNeXt V2-Atto在验证集的分类表现}
+    \label{tab:cp2_group1_methods_imagenet_val}
+    \begin{tabular}{lcccccc}
+        \hline
+        Model                     & Best Ep     & Acc(\%)        & Macro-F1(\%)   & 2D-F1(\%)      & 3D-F1(\%)      \\
+        \hline
+        ConvNeXt-Zepto            & 37          & 80.01          & 79.24          & 83.23          & 75.21          \\
+        MobileViT-XXS             & 32          & 82.08          & 81.35          & 85.04          & 77.66          \\
+        \textbf{ConvNeXt V2-Atto} & \textbf{35} & \textbf{84.08} & \textbf{83.39} & \textbf{86.77} & \textbf{80.02} \\
+        PoolFormerV2-S12          & 23          & 89.80          & 89.30          & 91.61          & 87.08          \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{ImageNet权重ConvNeXt V2-Atto在测试集的分类表现}
+    \label{tab:cp2_group1_methods_imagenet_test}
+    \begin{tabular}{lccccc}
+        \hline
+        Model                     & Acc(\%)        & Macro-F1(\%)   & 2D-F1(\%)      & 3D-F1(\%)      \\
+        \hline
+        ConvNeXt-Zepto            & 79.67          & 78.62          & 83.36          & 73.88          \\
+        MobileViT-XXS             & 81.18          & 80.16          & 84.65          & 75.68          \\
+        \textbf{ConvNeXt V2-Atto} & \textbf{83.73} & \textbf{82.80} & \textbf{86.80} & \textbf{78.78} \\
+        PoolFormerV2-S12          & 63.93          & 39.00          & 78.00          & 0.00           \\
+        \hline
+    \end{tabular}
+\end{table}
+
+上述表\ref{tab:cp2_group1_methods_imagenet_val}和表\ref{tab:cp2_group1_methods_imagenet_test}给出了本部分在统一ImageNet权重初始化下的跨模型RHEED图像分类任务表现结果。为避免指标含义歧义，本段采用统一定义，如下所示：
+\begin{equation}
+    \left\{
+    \begin{array}{l}
+        {\mathrm{Acc}=\frac{1}{N}\sum_{i=1}^{N}\mathbb{I}(\hat{y}_i=y_i)\times 100\%}; \\
+        {P_c=\frac{TP_c}{TP_c+FP_c}}; \\
+        {R_c=\frac{TP_c}{TP_c+FN_c}}; \\
+        {F1_c=\frac{2P_cR_c}{P_c+R_c}}; \\
+        {\mathrm{Macro\mbox{-}F1}=\frac{1}{2}(F1_{2D}+F1_{3D})}.
+    \end{array}
+    \right.
+\end{equation}
+其中2D-F1与3D-F1分别对应$F1_{2D}$与$F1_{3D}$。具体地，结合表\ref{tab:cp2_finetune_key_epochs_imagenet}可见，四个模型在训练早期均能较快提升验证精度，但中后期稳定性存在明显分化；ConvNeXt V2-Atto在第35轮达到收敛点，训练损失与验证精度的协同关系较稳定，验证集Acc为$84.08\%$，Macro-F1为$83.39\%$，2D-F1与3D-F1分别为$86.77\%$和$80.02\%$；ConvNeXt-Zepto与MobileViT-XXS虽然也形成可用分类表现结果，但验证上限分别停留在$80.01\%$和$82.08\%$，对应Macro-F1为$79.24\%$和$81.35\%$，说明其在RHEED过渡样本的边界刻画能力相较弱于ConvNeXt V2 Atto的表现；PoolFormerV2-S12在验证集出现$89.80\%$的峰值，但该峰值出现在损失震荡明显区间，随后epoch快速退化，这一现象与MetaFormer结构在不同数据分布下可能出现的判别边界不稳定问题一致，需要通过独立测试集进一步甄别其可迁移性\upcite{poolformer,torralba2011datasetbias,geirhos2020shortcut}。
+
+如表\ref{tab:cp2_group1_methods_imagenet_test}所示的ImageNet权重微调的四种模型在测试集上的RHEED图像分类表现，为RHEED图像分类任务提供了更关键的模型筛选验证。具体地，完全不改动超参数的前提下，ConvNeXt V2-Atto测试Acc为$83.73\%$，Macro-F1为$82.80\%$，2D-F1为$86.80\%$，3D-F1为$78.78\%$，四项指标均高于ConvNeXt-Zepto与MobileViT-XXS，对应提升分别为Acc加4.06与2.55个百分点，Macro-F1加4.18与2.64个百分点，3D-F1加4.90与3.10个百分点。此结果表明ConvNeXt V2 Atto并非仅在易分类样本上获益，而是在类别均衡性上也表现更稳，尤其3D类别提升具有更高工艺意义。此外，RHEED在线监测中，3D阶段通常对应表面粗化增强与后续生长风险上升，若该类漏检率偏高，将直接削弱过程反馈的有效性，因此3D-F1应与总体Acc共同作为RHEED图像分类方法的选型依据\upcite{kwoen2020rheed,khairehwalieh2023deoxidation}。PoolFormerV2-S12在测试集则出现显著失稳，Acc降至$63.93\%$，Macro-F1降至$39.00\%$，3D-F1为$0.00\%$，与其在验证集的RHEED图像分类峰值表现形成强反差，表明PoolFormerV2-S12在少样本的RHEED图像分类任务中存在明显的跨序列泛化风险。综上，此实验结果得出的核心结论，不是追求单次验证峰值，而是识别在验证集与测试集之间能够维持高位平台的RHEED图像分类方法。
+
+\begin{table}[htbp]
+    \centering
+    \caption{FCMAE自监督预训练ConvNeXt V2-Atto的验证集分类表现}
+    \label{tab:cp2_group2_weights_convnextv2_val}
+    \begin{tabular}{lcccccc}
+        \hline
+        weights            & Best Ep     & Acc(\%)        & Macro-F1(\%)   & 2D-F1(\%)      & 3D-F1(\%)      \\
+        \hline
+        None               & 41          & 81.98          & 81.25          & 84.94          & 77.56          \\
+        ImageNet           & 35          & 84.08          & 83.39          & 86.77          & 80.02          \\
+        FCMAE-80           & 35          & 88.97          & 88.45          & 90.91          & 85.98          \\
+        \textbf{FCMAE-120} & \textbf{37} & \textbf{91.97} & \textbf{91.56} & \textbf{93.42} & \textbf{89.69} \\
+        FCMAE-150          & 35          & 92.07          & 91.66          & 93.54          & 89.81          \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{FCMAE自监督预训练ConvNeXt V2-Atto的测试集分类表现}
+    \label{tab:cp2_group2_weights_convnextv2_test}
+    \begin{tabular}{lccccc}
+        \hline
+        weights            & Acc(\%)        & Macro-F1(\%)   & 2D-F1(\%)      & 3D-F1(\%)      \\
+        \hline
+        None               & 82.31          & 81.32          & 85.61          & 77.04          \\
+        ImageNet           & 83.73          & 82.80          & 86.80          & 78.78          \\
+        FCMAE-80           & 88.70          & 87.96          & 90.93          & 84.99          \\
+        \textbf{FCMAE-120} & \textbf{91.71} & \textbf{91.13} & \textbf{93.40} & \textbf{88.87} \\
+        FCMAE-150          & 91.99          & 91.43          & 93.62          & 89.23          \\
+        \hline
+    \end{tabular}
+\end{table}
+
+表\ref{tab:cp2_group2_weights_convnextv2_val}和表\ref{tab:cp2_group2_weights_convnextv2_test}给出了本部分在保持一致的数据划分、微调轮数、优化器和学习率策略下，固定ConvNeXt V2-Atto分类模型，定量评估不同初始化权重对RHEED图像分类的影响。基于此定量评估，不同权重下的RHEED图像分类性能差异主要归因于初始化表征差异。具体地，如表\ref{tab:cp2_group2_weights_convnextv2_val}反映不同权重模型在验证集上的分类表现，None到ImageNet，再到FCMAE自监督预训练权重系列，分类指标准确率呈单调上升趋势；None在第41轮达到Acc $81.98\%$，Macro-F1 $81.25\%$，属于可用基线；ImageNet提升到Acc $84.08\%$，Macro-F1 $83.39\%$，表明通用监督预训练对RHEED任务具有基础迁移收益；进一步采用FCMAE自监督预训练权重初始化，FCMAE-80、FCMAE-120和FCMAE-150分别达到Acc $88.97\%$、$91.97\%$和$92.07\%$，对应Macro-F1为$88.45\%$、$91.56\%$和$91.66\%$，结果表明和掩码建模预训练在视觉任务中的一般规律一致，即当预训练数据分布与下游任务分布更接近时，微调阶段更容易形成稳定且可分的类别边界\upcite{he2022mae,xie2022simmim,chen2021mocov3}。
+
+如表\ref{tab:cp2_group2_weights_convnextv2_test}所示，不同模型权重初始化差异对跨序列泛化的影响更加明显。具体地，ImageNet相对None的提升为Acc加1.42个百分点，Macro-F1加1.48个百分点，表明传统图像监督预训练仍有价值，但对于RHEED图像分类任务准确率的提升幅度有限；FCMAE-120相对ImageNet则实现Acc加7.98个百分点，Macro-F1加8.33个百分点，增益显著扩大。此外，观察类别级指标，2D-F1由$86.80\%$提升至$93.40\%$，3D-F1由$78.78\%$提升至$88.87\%$，3D类比2D类提升更突出。由于3D阶段在MBE监测中对应更高MBE工艺风险区间，此分类指标的提升具有明显的工程意义，意味着模型在关键风险样本上的漏报概率可被有效抑制\upcite{kwoen2020rheed,khairehwalieh2023deoxidation}。需要进一步说明的是，FCMAE-150在测试集绝对指标上略高于FCMAE-120，但二者差距较小且在验证集和测试集均处于同一高位平台，结合2.5.2小节中FCMAE自监督预训练阶段的损失和误差变化可以推断，80到120epoch的自监督预训练阶段属于有效表征强化区间，120到150epoch的自监督预训练阶段进入边际收益区间\upcite{dino2021,dosovitskiy2021vit,touvron2021deit}。因此，本研究在方法选择上不以单一最高分为唯一标准，而是将性能，稳定性和计算代价共同纳入评估。
+
+综上，基于表\ref{tab:cp2_group2_weights_convnextv2_val}和表\ref{tab:cp2_group2_weights_convnextv2_test}展示的验证集和测试集统一对照结果可知，在固定ImageNet初始化的结构对比中，ConvNeXt V2 Atto在跨集稳定性，类别均衡性与3D类别识别质量方面表现最稳健，能够避免仅依赖验证峰值带来的方法误判；在固定ConvNeXt V2 Atto的初始化对比中，FCMAE系列相对None与ImageNet均表现出显著增益，其中FCMAE-120在测试集达到$91.71\%$ Acc与$91.13\%$ Macro-F1，且3D-F1提升明显，验证了FCMAE自监督预训练先验可更有效支撑过渡阶段样本判别。此外，结合预训练成本分析可见，120到150阶段已进入边际收益区间，继续延长预训练仅带来小幅精度提升，而计算投入继续增加。本研究在性能、稳定性和资源开销的综合权衡下，最终选择FCMAE-120自监督预训练权重的ConvNeXt V2 Atto作为RHEED图像分类方法，并作为后续RHEED图像条纹和斑点目标检测分支共享骨干的默认初始化配置，该选择与掩码建模迁移规律和RHEED工艺监测需求保持一致\upcite{woo2023convnextv2,he2022mae,xie2022simmim,beit2021,kwoen2020rheed,khairehwalieh2023deoxidation}。
 
 \subsection{本章小结}
 \label{subsec:cp2_summary}
-
-本章构建了基于ConvNeXt V2的RHEED图像分类模型。通过严格的7:1:2时序切分与自监督预训练策略，我们克服了小样本与域偏移难题。实验结果表明，**SSL预训练策略将测试集准确率从82.31\%提升至91.71\%**，显著优于ImageNet迁移学习。同时，模型对比实验证实了纯卷积架构（ConvNeXt V2）在稳定性与泛化性上优于Transformer类模型（PoolFormer/MobileViT）。
-
-本章得到的分类模型不仅是一个高精度的判别器，其编码器权重更是蕴含了丰富的RHEED物理结构信息。在下一章中，我们将直接复用该预训练权重作为多任务检测网络的共享骨干（Backbone），进一步实现对衍射条纹与斑点的精细化定位。
+本章围绕RHEED图像分类任务展开方法构建与实验验证。具体地，引言部分介绍了RHEED图像分类任务的研究目标与工程背景，明确本章在多任务协同框架中的定位；第二小节介绍ConvNeXt V2分类网络与FCMAE域内自监督预训练机制，给出结构设计和初始化策略的技术依据；第三小节描述RHEED图像数据来源、组织和时序划分原则，确保训练验证测试划分可复现；第四小节给出训练超参数，评价指标与对照实验设计；第五小节基于两组对照实验对验证集和测试集进行联合分析，最终在性能，稳定性与成本的综合权衡下，确定FCMAE-120自监督预训练权重初始化的ConvNeXt V2 Atto作为后续共享骨干的RHEED图像分类任务基线。

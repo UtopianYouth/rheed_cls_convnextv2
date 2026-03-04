@@ -1,0 +1,8 @@
+FCMAE Residual Analysis Report
+========================================================================
+[2d_1100] MAE=1.3870, RMSE=1.8739, NMAE=0.005439, P95=4.0000, P99=6.0000, MaxAbs=15.0000 | Input=656x492 | residual_heatmap=656x492(PASS)
+[2d_600] MAE=1.6230, RMSE=2.4495, NMAE=0.006365, P95=5.0000, P99=9.0000, MaxAbs=36.0000 | Input=656x492 | residual_heatmap=656x492(PASS)
+[3d_1400] MAE=0.8043, RMSE=1.2484, NMAE=0.003154, P95=2.0000, P99=4.0000, MaxAbs=41.0000 | Input=656x492 | residual_heatmap=656x492(PASS)
+[3d_950] MAE=0.6601, RMSE=0.9904, NMAE=0.002589, P95=2.0000, P99=3.0000, MaxAbs=21.0000 | Input=656x492 | residual_heatmap=656x492(PASS)
+------------------------------------------------------------------------
+Summary: samples=4, mae_mean=1.1186, rmse_mean=1.6406, nmae_mean=0.004387, p95_mean=3.2500, p99_mean=5.5000, size_pass=4/4

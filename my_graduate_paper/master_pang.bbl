@@ -69,4 +69,136 @@
 \bibitem{c15}
 \bibauthor{ARTHUR J~R}\@. \bibtitle{Real-time monitoring and control of epitaxial growth using reflection high-energy electron diffraction}\bibmark{[J]}\@. \bibjournal{Surface Science}\@, \bibyear{2002}\@, \bibvolume{500}\bibnumber{(1-3)}\thinspace{}\textnormal{: }\bibpages{189\thinspace{}\textnormal{--}\thinspace{}217}\@.
 
+\bibitem{woo2023convnextv2}
+\bibauthor{WOO S\@, DEBNATH S\@, HU R, et~al}\@. \bibtitle{ConvNeXt V2: Co-Designing and Scaling ConvNets with Masked Autoencoders}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}\@. \bibyear{2023}\@.
+
+\bibitem{he2022mae}
+\bibauthor{HE K\@, CHEN X\@, XIE S, et~al}\@. \bibtitle{Masked Autoencoders Are Scalable Vision Learners}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}\@. \bibyear{2022}\@.
+
+\bibitem{liu2022convnext}
+\bibauthor{LIU Z\@, MAO H\@, WU C-Y, et~al}\@. \bibtitle{A ConvNet for the 2020s}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}\@. \bibyear{2022}\@.
+
+\bibitem{liu2021swin}
+\bibauthor{LIU Z\@, LIN Y\@, CAO Y, et~al}\@. \bibtitle{Swin Transformer: Hierarchical Vision Transformer using Shifted Windows}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)}\@. \bibyear{2021}\@.
+
+\bibitem{c19}
+\bibauthor{KUTSUKAKE K}\@. \bibtitle{Review of machine learning applications for crystal growth research}\bibmark{[J]}\@. \bibjournal{Journal of Crystal Growth}\@, \bibyear{2024}\@, \bibvolume{630}\thinspace{}\textnormal{: }\bibpages{127598}\@.
+
+\bibitem{torralba2011datasetbias}
+\bibauthor{TORRALBA A\@, EFROS A~A}\@. \bibtitle{Unbiased Look at Dataset Bias}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}\@. \bibyear{2011}\thinspace{}\textnormal{: }\bibpages{1521\thinspace{}\textnormal{--}\thinspace{}1528}\@.
+
+\bibitem{geirhos2020shortcut}
+\bibauthor{GEIRHOS R\@, JACOBSEN J-H\@, MICHAELIS C, et~al}\@. \bibtitle{Shortcut Learning in Deep Neural Networks}\bibmark{[C]} //\thinspace{}\bibbooktitle{Advances in Neural Information Processing Systems (NeurIPS)}\@. \bibyear{2020}\@.
+
+\bibitem{northcutt2021confidentlearning}
+\bibauthor{NORTHCUTT C~G\@, JIANG L\@, CHUANG I~L}\@. \bibtitle{Confident Learning: Estimating Uncertainty in Dataset Labels}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the 38th International Conference on Machine Learning (ICML)}\@. \bibyear{2021}\thinspace{}\textnormal{: }\bibpages{8270\thinspace{}\textnormal{--}\thinspace{}8280}\@.
+
+\bibitem{adams2007bocpd}
+\bibauthor{ADAMS R~P\@, MACKAY D~J~C}\@. \bibtitle{Bayesian Online Changepoint Detection}\bibmark{[C]} //\thinspace{}\bibbooktitle{Advances in Neural Information Processing Systems (NeurIPS)}\@. \bibyear{2007}\@.
+
+\bibitem{He2009TKDE}
+\bibauthor{HE H\@, GARCIA E~A}\@. \bibtitle{Learning from Imbalanced Data}\bibmark{[J]}\@. \bibjournal{IEEE Transactions on Knowledge and Data Engineering}\@, \bibyear{2009}\@, \bibvolume{21}\bibnumber{(9)}\thinspace{}\textnormal{: }\bibpages{1263\thinspace{}\textnormal{--}\thinspace{}1284}\@.
+
+\bibitem{Kautz2017PR}
+\bibauthor{KAUTZ T\@, GROH B~H\@, HANNINK J, et~al}\@. \bibtitle{Generic performance measure for multiclass-classifiers}\bibmark{[J]}\@. \bibjournal{Pattern Recognition}\@, \bibyear{2017}\@, \bibvolume{68}\thinspace{}\textnormal{: }\bibpages{111\thinspace{}\textnormal{--}\thinspace{}125}\@.
+
+\bibitem{lin2017fpn}
+\bibauthor{LIN T-Y\@, DOLL{\'A}R P\@, GIRSHICK R, et~al}\@. \bibtitle{Feature Pyramid Networks for Object Detection}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}\@. \bibyear{2017}\thinspace{}\textnormal{: }\bibpages{2117\thinspace{}\textnormal{--}\thinspace{}2125}\@.
+
+\bibitem{he2017maskrcnn}
+\bibauthor{HE K\@, GKIOXARI G\@, DOLL{\'A}R P, et~al}\@. \bibtitle{Mask R-CNN}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE International Conference on Computer Vision (ICCV)}\@. \bibyear{2017}\thinspace{}\textnormal{: }\bibpages{2961\thinspace{}\textnormal{--}\thinspace{}2969}\@.
+
+\bibitem{simclr}
+\bibauthor{CHEN T\@, KORNBLITH S\@, NOROUZI M, et~al}\@. \bibtitle{A Simple Framework for Contrastive Learning of Visual Representations}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the 37th International Conference on Machine Learning}\@. \bibyear{2020}\thinspace{}\textnormal{: }\bibpages{1597\thinspace{}\textnormal{--}\thinspace{}1607}\@.
+
+\bibitem{moco}
+\bibauthor{HE K\@, FAN H\@, WU Y, et~al}\@. \bibtitle{Momentum Contrast for Unsupervised Visual Representation Learning}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition}\@. \bibyear{2020}\thinspace{}\textnormal{: }\bibpages{9729\thinspace{}\textnormal{--}\thinspace{}9738}\@.
+
+\bibitem{byol}
+\bibauthor{GRILL J-B\@, STRUB F\@, ALTCH{\'E} F, et~al}\@. \bibtitle{Bootstrap Your Own Latent: A New Approach to Self-Supervised Learning}\bibmark{[C]} //\thinspace{}\bibbooktitle{Advances in Neural Information Processing Systems}\@. \bibyear{2020}\@, \bibvolume{33}\thinspace{}\textnormal{: }\bibpages{21271\thinspace{}\textnormal{--}\thinspace{}21284}\@.
+
+\bibitem{autoaugment2019}
+\bibauthor{CUBUK E~D\@, ZOPH B\@, SHLENS J, et~al}\@. \bibtitle{AutoAugment: Learning Augmentation Policies from Data}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}\@. \bibyear{2019}\thinspace{}\textnormal{: }\bibpages{113\thinspace{}\textnormal{--}\thinspace{}123}\@.
+
+\bibitem{cutmix2019}
+\bibauthor{YUN S\@, HAN D\@, OH S~J, et~al}\@. \bibtitle{CutMix: Regularization Strategy to Train Strong Classifiers with Localizable Features}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)}\@. \bibyear{2019}\thinspace{}\textnormal{: }\bibpages{6023\thinspace{}\textnormal{--}\thinspace{}6032}\@.
+
+\bibitem{timesnet2023}
+\bibauthor{WU H\@, XU J\@, WANG J, et~al}\@. \bibtitle{TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis}\bibmark{[C]} //\thinspace{}\bibbooktitle{International Conference on Learning Representations (ICLR)}\@. \bibyear{2023}\@.
+
+\bibitem{patchtst2023}
+\bibauthor{NIE Y\@, OTHERS}\@. \bibtitle{A Time Series is Worth 64 Words: Long-term Forecasting with Transformers}\bibmark{[C]} //\thinspace{}\bibbooktitle{International Conference on Learning Representations (ICLR)}\@. \bibyear{2023}\@.
+
+\bibitem{c20}
+\bibauthor{LIU Z\@, MAO H\@, WU C~Y, et~al}\@. \bibtitle{A convnet for the 2020s}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition}\@. \bibyear{2022}\thinspace{}\textnormal{: }\bibpages{11976\thinspace{}\textnormal{--}\thinspace{}11986}\@.
+
+\bibitem{mobilevit}
+\bibauthor{MEHTA S\@, RASTEGARI M}\@. \bibtitle{MobileViT: Light-weight, General-purpose, and Mobile-friendly Vision Transformer}\bibmark{[C]} //\thinspace{}\bibbooktitle{International Conference on Learning Representations}\@. \bibyear{2022}\@.
+
+\bibitem{poolformer}
+\bibauthor{YU W\@, LUO M\@, ZHOU P, et~al}\@. \bibtitle{MetaFormer Is Actually What You Need for Vision}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition}\@. \bibyear{2022}\@.
+
+\bibitem{russakovsky2015imagenet}
+\bibauthor{RUSSAKOVSKY O\@, DENG J\@, SU H, et~al}\@. \bibtitle{ImageNet Large Scale Visual Recognition Challenge}\bibmark{[J/OL]}\@. \bibjournal{International Journal of Computer Vision}\@, \bibyear{2015}\@, \bibvolume{115}\bibnumber{(3)}\thinspace{}\textnormal{: }\bibpages{211\thinspace{}\textnormal{--}\thinspace{}252}\@. \newline\url{http://dx.doi.org/10.1007/s11263-015-0816-y}\@.
+
+\bibitem{recht2019imagenet}
+\bibauthor{RECHT B\@, ROELOFS R\@, SCHMIDT L, et~al}\@. \bibtitle{Do ImageNet Classifiers Generalize to ImageNet?}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the 36th International Conference on Machine Learning}\@. \bibyear{2019}\thinspace{}\textnormal{: }\bibpages{5389\thinspace{}\textnormal{--}\thinspace{}5400}\@.
+
+\bibitem{kohavi1995cv}
+\bibauthor{KOHAVI R}\@. \bibtitle{A Study of Cross-Validation and Bootstrap for Accuracy Estimation and Model Selection}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the 14th International Joint Conference on Artificial Intelligence}\@. \bibyear{1995}\thinspace{}\textnormal{: }\bibpages{1137\thinspace{}\textnormal{--}\thinspace{}1143}\@.
+
+\bibitem{cawley2010overfitting}
+\bibauthor{CAWLEY G~C\@, TALBOT N~L~C}\@. \bibtitle{On Over-fitting in Model Selection and Subsequent Selection Bias in Performance Evaluation}\bibmark{[J]}\@. \bibjournal{Journal of Machine Learning Research}\@, \bibyear{2010}\@, \bibvolume{11}\thinspace{}\textnormal{: }\bibpages{2079\thinspace{}\textnormal{--}\thinspace{}2107}\@.
+
+\bibitem{koh2021wilds}
+\bibauthor{KOH P~W\@, SAGAWA S\@, MARKLUND H, et~al}\@. \bibtitle{WILDS: A Benchmark of in-the-Wild Distribution Shifts}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the 38th International Conference on Machine Learning}\@. \bibyear{2021}\thinspace{}\textnormal{: }\bibpages{5637\thinspace{}\textnormal{--}\thinspace{}5650}\@.
+
+\bibitem{tang2022swinmedssl}
+\bibauthor{TANG Y\@, YANG D\@, LI W, et~al}\@. \bibtitle{Self-Supervised Pre-Training of Swin Transformers for 3D Medical Image Analysis}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}\@. \bibyear{2022}\thinspace{}\textnormal{: }\bibpages{20730\thinspace{}\textnormal{--}\thinspace{}20740}\@.
+
+\bibitem{tong2022videomae}
+\bibauthor{TONG Z\@, SONG Y\@, WANG J, et~al}\@. \bibtitle{VideoMAE: Masked Autoencoders Are Data-Efficient Learners for Self-Supervised Video Pre-Training}\bibmark{[C]} //\thinspace{}\bibbooktitle{Advances in Neural Information Processing Systems (NeurIPS)}\@. \bibyear{2022}\@, \bibvolume{35}\@.
+
+\bibitem{wilkinson2009clusterheatmap}
+\bibauthor{WILKINSON L\@, FRIENDLY M}\@. \bibtitle{The History of the Cluster Heat Map}\bibmark{[J/OL]}\@. \bibjournal{The American Statistician}\@, \bibyear{2009}\@, \bibvolume{63}\bibnumber{(2)}\thinspace{}\textnormal{: }\bibpages{179\thinspace{}\textnormal{--}\thinspace{}184}\@. \newline\url{http://dx.doi.org/10.1198/tas.2009.0033}\@.
+
+\bibitem{davis2006relationship}
+\bibauthor{DAVIS J\@, GOADRICH M}\@. \bibtitle{The Relationship Between Precision-Recall and ROC Curves}\bibmark{[C/OL]} //\thinspace{}\bibbooktitle{Proceedings of the 23rd International Conference on Machine Learning}\@. \bibyear{2006}\thinspace{}\textnormal{: }\bibpages{233\thinspace{}\textnormal{--}\thinspace{}240}\@. \newline\url{http://dx.doi.org/10.1145/1143844.1143874}\@.
+
+\bibitem{burton1951crystal}
+\bibauthor{BURTON W~K\@, CABRERA N\@, FRANK F~C}\@. \bibtitle{The Growth of Crystals and the Equilibrium Structure of Their Surfaces}\bibmark{[J/OL]}\@. \bibjournal{Philosophical Transactions of the Royal Society A}\@, \bibyear{1951}\@, \bibvolume{243}\bibnumber{(866)}\thinspace{}\textnormal{: }\bibpages{299\thinspace{}\textnormal{--}\thinspace{}358}\@. \newline\url{http://dx.doi.org/10.1098/rsta.1951.0006}\@.
+
+\bibitem{xie2022simmim}
+\bibauthor{XIE Z\@, ZHANG Z\@, CAO Y, et~al}\@. \bibtitle{SimMIM: A Simple Framework for Masked Image Modeling}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}\@. \bibyear{2022}\thinspace{}\textnormal{: }\bibpages{9653\thinspace{}\textnormal{--}\thinspace{}9663}\@.
+
+\bibitem{prechelt1998}
+\bibauthor{PRECHELT L}\@. \bibtitle{Early Stopping --- But When?}\bibmark{[J]}\@. \bibjournal{Neural Networks: Tricks of the Trade}\@, \bibyear{1998}\thinspace{}\textnormal{: }\bibpages{55\thinspace{}\textnormal{--}\thinspace{}69}\@.
+
+\bibitem{touvron2021deit}
+\bibauthor{TOUVRON H\@, CORD M\@, DOUZE M, et~al}\@. \bibtitle{Training Data-Efficient Image Transformers \& Distillation through Attention}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the 38th International Conference on Machine Learning (ICML)}\@. \bibyear{2021}\thinspace{}\textnormal{: }\bibpages{10347\thinspace{}\textnormal{--}\thinspace{}10357}\@.
+
+\bibitem{kwoen2020rheed}
+\bibauthor{KWOEN J\@, ARAKAWA Y}\@. \bibtitle{Classification of Reflection High-Energy Electron Diffraction Pattern Using Machine Learning}\bibmark{[J/OL]}\@. \bibjournal{Crystal Growth \& Design}\@, \bibyear{2020}\@. \newline\url{http://dx.doi.org/10.1021/acs.cgd.0c00506}\@.
+
+\bibitem{khairehwalieh2023deoxidation}
+\bibauthor{KHAIREH-WALIEH A\@, ARNOULT A\@, PLISSARD S, et~al}\@. \bibtitle{Monitoring {MBE} Substrate Deoxidation via {RHEED} Image-Sequence Analysis by Deep Learning}\bibmark{[J/OL]}\@. \bibjournal{Crystal Growth \& Design}\@, \bibyear{2023}\@. \newline\url{http://dx.doi.org/10.1021/acs.cgd.2c01132}\@.
+
+\bibitem{dino2021}
+\bibauthor{CARON M\@, TOUVRON H\@, MISRA I, et~al}\@. \bibtitle{Emerging Properties in Self-Supervised Vision Transformers}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)}\@. \bibyear{2021}\thinspace{}\textnormal{: }\bibpages{9650\thinspace{}\textnormal{--}\thinspace{}9660}\@.
+
+\bibitem{tan2019efficientnet}
+\bibauthor{TAN M\@, LE Q~V}\@. \bibtitle{EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the 36th International Conference on Machine Learning (ICML)}\@. \bibyear{2019}\thinspace{}\textnormal{: }\bibpages{6105\thinspace{}\textnormal{--}\thinspace{}6114}\@.
+
+\bibitem{radosavovic2020designing}
+\bibauthor{RADOSAVOVIC I\@, KOSARAJU R~P\@, GIRSHICK R, et~al}\@. \bibtitle{Designing Network Design Spaces}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}\@. \bibyear{2020}\thinspace{}\textnormal{: }\bibpages{10428\thinspace{}\textnormal{--}\thinspace{}10436}\@.
+
+\bibitem{chen2021mocov3}
+\bibauthor{CHEN X\@, XIE S\@, HE K}\@. \bibtitle{An Empirical Study of Training Self-Supervised Vision Transformers}\bibmark{[C]} //\thinspace{}\bibbooktitle{Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)}\@. \bibyear{2021}\thinspace{}\textnormal{: }\bibpages{9640\thinspace{}\textnormal{--}\thinspace{}9649}\@.
+
+\bibitem{dosovitskiy2021vit}
+\bibauthor{DOSOVITSKIY A\@, BEYER L\@, KOLESNIKOV A, et~al}\@. \bibtitle{An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale}\bibmark{[C]} //\thinspace{}\bibbooktitle{International Conference on Learning Representations (ICLR)}\@. \bibyear{2021}\@.
+
+\bibitem{beit2021}
+\bibauthor{BAO H\@, DONG L\@, WEI F}\@. \bibtitle{BEiT: BERT Pre-Training of Image Transformers}\bibmark{[C]} //\thinspace{}\bibbooktitle{International Conference on Learning Representations (ICLR)}\@. \bibyear{2022}\@.
+
 \end{thebibliography}

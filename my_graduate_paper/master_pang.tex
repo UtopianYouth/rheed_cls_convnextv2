@@ -120,21 +120,21 @@
 
 %document begin
 \begin{document}
-	
+
 %封面 自行配置生成pdf文件导入即可
 \includepdf[pages={1,2}]{chapter/masterPage.pdf}
-	
+
 % 全局页眉页脚：确保摘要等多页内容的后续页保持 fancy 样式
 % 解决 issue: https://github.com/Ftine/SZU_Latex_Master_Template/issues/19
 \pagestyle{fancy}
 \fancyhead[C]{\songti\zihao{5}{\titleCN}}
 \fancyhead[C]{\songti\zihao{5}{\titleEN}}
-	
+
 %中英文摘要
-\input{chapter/abstract.tex} 
-	
+\input{chapter/abstract.tex}
+
 \setlength{\baselineskip}{23pt} %设置行距23磅
-	
+
 \tableofcontents	%目录
 
 %缩略语
@@ -156,16 +156,16 @@
 %%%%%%%%% 图索引和表索引
 % \renewcommand\listfigurename{\songti\zihao{2}{\textbf{图~~目~~录}}}
 % \renewcommand\listtablename{\songti\zihao{2}{\textbf{表~~目~~录}}}
-	
+
 % \renewcommand{\figurename}{图}
 % \renewcommand{\tablename}{表}
-	
+
 \makeatletter %
 \@addtoreset{equation}{section}
 \makeatother  %
 % 公式更改为3-2样式
 \renewcommand\theequation{{\thesection}-{\arabic{equation}}}
-	
+
 %%%%%%%%%% 表每节重新标号
 \makeatletter %
 \@addtoreset{table}{section}
@@ -192,7 +192,6 @@
 \input{chapter/cp2.tex}
 \input{chapter/cp3.tex}
 \input{chapter/cp4.tex}
-\input{chapter/cp5.tex}
 
 
 \clearpage
@@ -202,7 +201,7 @@
 \fancyfoot[C]{\songti\zihao{5}{\thepage}}
 
 \begin{spacing}{1.8}
-	\bibliographystyle{gbt7714-2005} 
+	\bibliographystyle{gbt7714-2005}
 	\bibliography{ref_paper}
 \end{spacing}
 

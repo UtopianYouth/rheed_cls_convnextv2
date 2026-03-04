@@ -1,7 +1,7 @@
 """Analyze training outputs (pretrain + finetune) and generate plots/tables.
 
 This script is intentionally lightweight and engineering-oriented:
-- Parse JSONL logs produced by src/train_timm.py and src/pretrain_ssl.py
+- Parse JSONL logs produced by src/train_timm.py and src/pretrain_fcmae.py
 - Generate clear plots (loss/acc curves, confusion matrices)
 - Export summary tables (CSV + LaTeX)
 
@@ -26,6 +26,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Rectangle
+from matplotlib.ticker import AutoMinorLocator, MaxNLocator, MultipleLocator
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,14 +47,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--finetune_glob",
         type=str,
-        default="finetune_timm_*",
-        help="Glob pattern under outputs_dir for finetune runs",
+        default="finetune_*",
+        help="Glob pattern under outputs_dir for finetune runs (default: finetune_*)",
     )
     p.add_argument(
         "--pretrain_glob",
         type=str,
-        default="pretrain_ssl_*",
-        help="Glob pattern under outputs_dir for pretrain runs",
+        default="pretrain_*",
+        help="Glob pattern under outputs_dir for pretrain runs (default: pretrain_*)",
     )
     p.add_argument(
         "--max_epochs_for_cm",
@@ -93,9 +95,14 @@ def parse_finetune_name(run_name: str) -> Tuple[str, str]:
     name = run_name
     if name.startswith("finetune_timm_"):
         name = name[len("finetune_timm_"):]
+    elif name.startswith("finetune_"):
+        name = name[len("finetune_"):]
+
     parts = [p for p in name.split("_") if p]
+    # 兼容目录名: finetune_YYYYmmdd_HHMMSS_model_weight
     if len(parts) >= 3 and parts[0].isdigit() and parts[1].isdigit():
         parts = parts[2:]
+
     if len(parts) >= 2:
         weight = parts[-1]
         model = "_".join(parts[:-1])
@@ -108,36 +115,186 @@ def parse_finetune_name(run_name: str) -> Tuple[str, str]:
     return model, weight
 
 
-def plot_pretrain_ssl_curve(pre_dir: Path, out_dir: Path) -> Optional[Path]:
+COLOR_CYCLE = [
+    "#1f77b4",  # blue
+    "#d62728",  # red
+    "#2ca02c",  # green
+    "#9467bd",  # purple
+    "#ff7f0e",  # orange
+    "#17becf",  # cyan
+    "#8c564b",  # brown
+]
+LINE_STYLES = ["-", "--", "-.", ":"]
+
+
+def _indices_every_n_epochs(epochs: Sequence[int], n: int = 10) -> List[int]:
+    if n <= 0:
+        return []
+    return [i for i, e in enumerate(epochs) if int(e) % n == 0]
+
+
+def _line_style_by_idx(idx: int) -> Tuple[str, str]:
+    color = COLOR_CYCLE[idx % len(COLOR_CYCLE)]
+    linestyle = LINE_STYLES[idx % len(LINE_STYLES)]
+    return color, linestyle
+
+
+def _set_x_epoch_ticks(ax: Any, epochs: Sequence[int]) -> None:
+    if not epochs:
+        return
+    e_max = int(max(epochs))
+    if e_max >= 10:
+        ax.xaxis.set_major_locator(MultipleLocator(10))
+    else:
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+
+def _set_finer_y_ticks(ax: Any, y_major_step: Optional[float] = None) -> None:
+    if y_major_step is not None:
+        ax.yaxis.set_major_locator(MultipleLocator(y_major_step))
+    ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+
+    # 不显示横向网格线（纵轴刻度线对应的横线）
+    ax.grid(False, which="both", axis="both")
+
+    # 轴线样式：只保留左侧 y 轴与底部 x 轴
+    ax.spines["right"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["left"].set_linewidth(1.05)
+    ax.spines["bottom"].set_linewidth(1.0)
+    ax.spines["left"].set_color("#333333")
+    ax.spines["bottom"].set_color("#333333")
+
+    # 刻度线内向，论文图更紧凑
+    ax.tick_params(axis="x", which="major", direction="in", length=4, width=0.8, colors="#333333")
+    ax.tick_params(axis="y", which="major", direction="in", length=4, width=0.8, colors="#333333")
+    ax.tick_params(axis="y", which="minor", direction="in", length=2.5, width=0.6, colors="#666666")
+
+
+def _setup_plot_style() -> None:
+    plt.style.use("seaborn-v0_8-whitegrid")
+    plt.rcParams.update(
+        {
+            "font.size": 10,
+            "axes.labelsize": 11,
+            "legend.fontsize": 9,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "figure.dpi": 140,
+            "savefig.bbox": "tight",
+        }
+    )
+
+
+def _line_render_kwargs() -> Dict[str, Any]:
+    return {
+        "linewidth": 1.75,
+        "alpha": 0.95,
+        "solid_capstyle": "round",
+        "solid_joinstyle": "round",
+    }
+
+
+def _smooth_for_display(epochs: Sequence[int], values: Sequence[float], window: int = 5) -> List[float]:
+    arr = np.array(values, dtype=np.float64)
+    if arr.size == 0:
+        return []
+    if window <= 1:
+        return arr.tolist()
+    if window % 2 == 0:
+        window += 1
+
+    valid = ~np.isnan(arr)
+    arr_filled = np.where(valid, arr, 0.0)
+    kernel = np.ones(window, dtype=np.float64)
+    num = np.convolve(arr_filled, kernel, mode="same")
+    den = np.convolve(valid.astype(np.float64), kernel, mode="same")
+    smooth = np.divide(num, den, out=np.copy(arr), where=den > 0)
+
+    # 保留每10 epoch锚点与首尾点，保证关键标记点仍在曲线上
+    out = smooth.tolist()
+    for i, e in enumerate(epochs):
+        if i == 0 or i == len(epochs) - 1 or int(e) % 10 == 0:
+            out[i] = float(arr[i])
+    return out
+
+
+def _pick_annotation_offset(
+    idx: int,
+    y: float,
+    used_label_pos: List[Tuple[float, float]],
+) -> Tuple[Tuple[int, int], Tuple[float, float]]:
+    candidates = [(14, 14), (14, -20), (-64, 14), (-64, -20), (20, 26), (20, -30), (-72, 26), (-72, -30)]
+    for offx, offy in candidates:
+        px = float(idx) + offx * 0.30
+        py = float(y) + offy * 0.16
+        if all(abs(px - ux) > 10.0 or abs(py - uy) > 2.2 for ux, uy in used_label_pos):
+            return (offx, offy), (px, py)
+
+    offx, offy = candidates[idx % len(candidates)]
+    px = float(idx) + offx * 0.30
+    py = float(y) + offy * 0.16
+    return (offx, offy), (px, py)
+
+
+def plot_pretrain_fcmae_curve(pre_dir: Path, out_dir: Path) -> Optional[Path]:
     log_path = pre_dir / "log.txt"
     rows = read_jsonl(log_path)
     if not rows:
         return None
 
     epochs = [int(r.get("epoch")) for r in rows if "epoch" in r]
-    losses = [float(r.get("ssl_loss")) for r in rows if "ssl_loss" in r]
+    losses = [float(r.get("fcmae_loss")) for r in rows if "fcmae_loss" in r]
     if not epochs or not losses:
         return None
 
-    plt.figure(figsize=(7.6, 4.6))
-    plt.plot(epochs, losses, linewidth=2)
-    plt.xlabel("Epoch")
-    plt.ylabel("SSL Loss (NT-Xent)")
-    plt.grid(True, alpha=0.3)
+    losses_plot = _smooth_for_display(epochs, losses, window=5)
 
-    idx = int(np.argmin(np.array(losses)))
-    plt.scatter([epochs[idx]], [losses[idx]], s=40)
-    plt.annotate(
-        f"min={losses[idx]:.4f}@{epochs[idx]}",
-        (epochs[idx], losses[idx]),
-        textcoords="offset points",
-        xytext=(10, -12),
+    fig, ax = plt.subplots(figsize=(7.8, 4.8))
+    color, linestyle = _line_style_by_idx(0)
+    mark_idx = _indices_every_n_epochs(epochs, n=10)
+    ax.plot(
+        epochs,
+        losses_plot,
+        color=color,
+        linestyle=linestyle,
+        marker="o",
+        markevery=mark_idx if mark_idx else None,
+        markersize=3.4,
+        markerfacecolor="white",
+        markeredgewidth=0.95,
+        markeredgecolor=color,
+        label="FCMAE Loss",
+        **_line_render_kwargs(),
     )
 
-    out_path = out_dir / f"ssl_loss_curve_{pre_dir.name}.png"
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=220)
-    plt.close()
+    best_idx = int(np.argmin(np.array(losses)))
+    best_epoch = epochs[best_idx]
+    best_loss_raw = losses[best_idx]
+    best_loss_plot = losses_plot[best_idx]
+    y_off = -20 if best_loss_plot > float(np.nanmedian(losses_plot)) else 14
+    ax.scatter([best_epoch], [best_loss_plot], s=40, color="#111111", zorder=5)
+    ax.annotate(
+        f"E{best_epoch}, {best_loss_raw:.4f}",
+        (best_epoch, best_loss_plot),
+        textcoords="offset points",
+        xytext=(14, y_off),
+        fontsize=8.8,
+        bbox=dict(boxstyle="round,pad=0.16", facecolor="white", edgecolor="none", alpha=0.72),
+        arrowprops=dict(arrowstyle="-", color="#666666", lw=0.8, shrinkA=0, shrinkB=4),
+    )
+
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    _set_x_epoch_ticks(ax, epochs)
+    _set_finer_y_ticks(ax)
+    ax.margins(x=0.04, y=0.08)
+    ax.legend(frameon=False)
+
+    out_path = out_dir / f"fcmae_loss_curve_{pre_dir.name}.png"
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=240)
+    plt.close(fig)
     return out_path
 
 
@@ -153,68 +310,220 @@ def plot_finetune_curves(ft_dir: Path, out_dir: Path) -> Optional[Path]:
     val_acc = [float(r["val"]["acc1"]) for r in rows]
     val_f1 = [safe_float(r["val"].get("f1_macro")) for r in rows]
 
-    fig, axes = plt.subplots(1, 2, figsize=(12.2, 4.4))
+    train_loss_plot = _smooth_for_display(epochs, train_loss, window=5)
+    val_loss_plot = _smooth_for_display(epochs, val_loss, window=5)
+    train_acc_plot = _smooth_for_display(epochs, train_acc, window=5)
+    val_acc_plot = _smooth_for_display(epochs, val_acc, window=5)
 
-    axes[0].plot(epochs, train_loss, label="Train Loss", linewidth=2)
-    axes[0].plot(epochs, val_loss, label="Val Loss", linewidth=2)
+    fig, axes = plt.subplots(1, 2, figsize=(12.8, 4.8))
+    mark_idx = _indices_every_n_epochs(epochs, n=10)
+
+    c0, s0 = _line_style_by_idx(0)
+    c1, s1 = _line_style_by_idx(1)
+    axes[0].plot(
+        epochs,
+        train_loss_plot,
+        label="Train Loss",
+        color=c0,
+        linestyle=s0,
+        marker="o",
+        markevery=mark_idx if mark_idx else None,
+        markersize=3.2,
+        markerfacecolor="white",
+        markeredgecolor=c0,
+        markeredgewidth=0.9,
+        **_line_render_kwargs(),
+    )
+    axes[0].plot(
+        epochs,
+        val_loss_plot,
+        label="Val Loss",
+        color=c1,
+        linestyle=s1,
+        marker="o",
+        markevery=mark_idx if mark_idx else None,
+        markersize=3.2,
+        markerfacecolor="white",
+        markeredgecolor=c1,
+        markeredgewidth=0.9,
+        **_line_render_kwargs(),
+    )
+
+    min_val_loss_idx = int(np.argmin(np.array(val_loss)))
+    min_val_loss_raw = val_loss[min_val_loss_idx]
+    min_val_loss_plot = val_loss_plot[min_val_loss_idx]
+    axes[0].scatter([epochs[min_val_loss_idx]], [min_val_loss_plot], s=36, color="#111111", zorder=5)
+    axes[0].annotate(
+        f"E{epochs[min_val_loss_idx]}, {min_val_loss_raw:.4f}",
+        (epochs[min_val_loss_idx], min_val_loss_plot),
+        textcoords="offset points",
+        xytext=(14, -20),
+        fontsize=8.8,
+        bbox=dict(boxstyle="round,pad=0.14", facecolor="white", edgecolor="none", alpha=0.72),
+        arrowprops=dict(arrowstyle="-", color="#666666", lw=0.8, shrinkA=0, shrinkB=4),
+    )
     axes[0].set_xlabel("Epoch")
     axes[0].set_ylabel("Loss")
-    axes[0].grid(True, alpha=0.3)
-    axes[0].legend()
+    _set_x_epoch_ticks(axes[0], epochs)
+    _set_finer_y_ticks(axes[0])
+    axes[0].margins(x=0.04, y=0.08)
+    axes[0].legend(frameon=False)
 
-    axes[1].plot(epochs, train_acc, label="Train Acc@1", linewidth=2)
-    axes[1].plot(epochs, val_acc, label="Val Acc@1", linewidth=2)
+    c2, s2 = _line_style_by_idx(2)
+    c3, s3 = _line_style_by_idx(3)
+    axes[1].plot(
+        epochs,
+        train_acc_plot,
+        label="Train Acc@1",
+        color=c2,
+        linestyle=s2,
+        marker="o",
+        markevery=mark_idx if mark_idx else None,
+        markersize=3.2,
+        markerfacecolor="white",
+        markeredgecolor=c2,
+        markeredgewidth=0.9,
+        **_line_render_kwargs(),
+    )
+    axes[1].plot(
+        epochs,
+        val_acc_plot,
+        label="Val Acc@1",
+        color=c3,
+        linestyle=s3,
+        marker="o",
+        markevery=mark_idx if mark_idx else None,
+        markersize=3.2,
+        markerfacecolor="white",
+        markeredgecolor=c3,
+        markeredgewidth=0.9,
+        **_line_render_kwargs(),
+    )
     if any(v is not None for v in val_f1):
         vf = [v if v is not None else math.nan for v in val_f1]
-        axes[1].plot(epochs, vf, label="Val Macro-F1", linewidth=2)
+        vf_plot = _smooth_for_display(epochs, vf, window=5)
+        c4, s4 = _line_style_by_idx(4)
+        axes[1].plot(
+            epochs,
+            vf_plot,
+            label="Val Macro-F1",
+            color=c4,
+            linestyle=s4,
+            marker="o",
+            markevery=mark_idx if mark_idx else None,
+            markersize=3.2,
+            markerfacecolor="white",
+            markeredgecolor=c4,
+            markeredgewidth=0.9,
+            **_line_render_kwargs(),
+        )
     axes[1].set_xlabel("Epoch")
     axes[1].set_ylabel("Metric (%)")
-    axes[1].set_ylim(0, 105)
-    axes[1].grid(True, alpha=0.3)
-    axes[1].legend()
+    axes[1].set_ylim(0, 100)
+    _set_x_epoch_ticks(axes[1], epochs)
+    _set_finer_y_ticks(axes[1], y_major_step=5)
+    axes[1].margins(x=0.04, y=0.06)
 
-    # 标注 best epoch（按 log 中 best_metric/best_epoch）
+    # 标注按日志best_metric/best_epoch选取的点
     best_row = max(rows, key=lambda r: r.get("best_metric", -1))
     best_epoch = best_row.get("best_epoch", best_row.get("epoch"))
-    if isinstance(best_epoch, int) and best_epoch in epochs:
-        idx = epochs.index(best_epoch)
-        axes[1].scatter([epochs[idx]], [val_acc[idx]], s=40)
-        axes[1].annotate(
-            f"best@{best_epoch}\nval_acc={val_acc[idx]:.2f}",
-            (epochs[idx], val_acc[idx]),
-            textcoords="offset points",
-            xytext=(10, -15),
-        )
+    if not isinstance(best_epoch, int) or best_epoch not in epochs:
+        best_epoch = epochs[int(np.argmax(np.array(val_acc)))]
+    best_idx = epochs.index(int(best_epoch))
+    best_acc_raw = val_acc[best_idx]
+    best_acc_plot = val_acc_plot[best_idx]
+    y_off = -20 if best_acc_plot > 90 else 14
+    axes[1].scatter([best_epoch], [best_acc_plot], s=44, color="#111111", zorder=6)
+    axes[1].annotate(
+        f"E{best_epoch}, {best_acc_raw:.2f}",
+        (best_epoch, best_acc_plot),
+        textcoords="offset points",
+        xytext=(14, y_off),
+        fontsize=9,
+        bbox=dict(boxstyle="round,pad=0.16", facecolor="white", edgecolor="none", alpha=0.72),
+        arrowprops=dict(arrowstyle="-", color="#666666", lw=0.8, shrinkA=0, shrinkB=4),
+    )
+    axes[1].legend(frameon=False)
 
     model_name, weight_name = parse_finetune_name(ft_dir.name)
     out_path = out_dir / f"curves_{model_name}_{weight_name}.png"
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=220)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=240)
     plt.close(fig)
     return out_path
 
 
 def plot_confusion_matrix(cm: Sequence[Sequence[int]], out_path: Path, title: Optional[str] = None) -> None:
     cm_arr = np.array(cm, dtype=np.int64)
+    if cm_arr.ndim != 2 or cm_arr.shape[0] != cm_arr.shape[1]:
+        return
 
-    fig, ax = plt.subplots(figsize=(4.9, 4.3))
-    im = ax.imshow(cm_arr, cmap="Blues")
+    row_sum = cm_arr.sum(axis=1, keepdims=True)
+    cm_norm = np.divide(cm_arr, row_sum, out=np.zeros_like(cm_arr, dtype=np.float64), where=row_sum > 0)
+    cm_pct = cm_norm * 100.0
 
-    if title:
-        ax.set_title(title)
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("Ground Truth")
-    ax.set_xticks([0, 1])
-    ax.set_yticks([0, 1])
-    ax.set_xticklabels(["2D", "3D"])
-    ax.set_yticklabels(["2D", "3D"])
+    fig, ax = plt.subplots(figsize=(5.2, 4.6))
+    im = ax.imshow(cm_pct, cmap="YlGnBu", vmin=0.0, vmax=100.0)
 
+    # 按用户要求：图内不再显示标题（即便传入 title）
+    _ = title
+
+    n_cls = cm_arr.shape[0]
+    labels = ["2D", "3D"] if n_cls == 2 else [str(i) for i in range(n_cls)]
+    ax.set_xlabel("Predicted Class")
+    ax.set_ylabel("Ground Truth Class")
+    ax.set_xticks(np.arange(n_cls))
+    ax.set_yticks(np.arange(n_cls))
+    ax.set_xticklabels(labels)
+    ax.set_yticklabels(labels)
+
+    # 不绘制内部网格线，仅保留外边框
+    ax.grid(False)
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(1.1)
+        spine.set_color("#333333")
+
+    # 标注：计数 + 行归一化百分比
     for (i, j), v in np.ndenumerate(cm_arr):
-        ax.text(j, i, str(int(v)), ha="center", va="center", fontsize=10)
+        pct = cm_pct[i, j]
+        text_color = "white" if pct >= 55 else "#1a1a1a"
+        ax.text(
+            j,
+            i,
+            f"{int(v)}\n({pct:.1f}%)",
+            ha="center",
+            va="center",
+            fontsize=9,
+            color=text_color,
+        )
 
-    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=220)
+    # 对角线高亮（正确分类项）
+    for k in range(n_cls):
+        rect = Rectangle((k - 0.5, k - 0.5), 1, 1, fill=False, edgecolor="#ff7f0e", linewidth=2.0)
+        ax.add_patch(rect)
+
+    # 右侧颜色条
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Row-wise Ratio (%)", rotation=90)
+
+    total = int(cm_arr.sum())
+    diag = int(np.trace(cm_arr))
+    acc = (diag / total * 100.0) if total > 0 else 0.0
+    bal_acc = float(np.mean(np.diag(cm_norm)) * 100.0)
+    ax.text(
+        0.5,
+        -0.14,
+        f"Samples={total}, Acc={acc:.2f}%, Balanced-Acc={bal_acc:.2f}%",
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+        fontsize=9,
+        color="#333333",
+    )
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=240)
     plt.close(fig)
 
 
@@ -328,39 +637,82 @@ def plot_val_acc_comparison(
     out_dir: Path,
     out_name: str,
 ) -> Optional[Path]:
-    plt.figure(figsize=(8.8, 5.2))
+    fig, ax = plt.subplots(figsize=(9.2, 5.4))
 
     any_ok = False
-    for d in finetune_dirs:
+    all_epochs: List[int] = []
+    used_label_points: List[Tuple[float, float]] = []
+    for i, d in enumerate(finetune_dirs):
         rows = read_jsonl(d / "log.txt")
         if not rows:
             continue
+
         epochs = [int(r["epoch"]) for r in rows]
         val_acc = [float(r["val"]["acc1"]) for r in rows]
+        val_acc_plot = _smooth_for_display(epochs, val_acc, window=5)
+        all_epochs.extend(epochs)
+
         model_name, weight_name = parse_finetune_name(d.name)
         label = f"{model_name}_{weight_name}"
-        plt.plot(epochs, val_acc, linewidth=2, label=label)
+        color, linestyle = _line_style_by_idx(i)
+        mark_idx = _indices_every_n_epochs(epochs, n=10)
+
+        ax.plot(
+            epochs,
+            val_acc_plot,
+            color=color,
+            linestyle=linestyle,
+            marker="o",
+            markevery=mark_idx if mark_idx else None,
+            markersize=3.2,
+            markerfacecolor="white",
+            markeredgecolor=color,
+            markeredgewidth=0.9,
+            label=label,
+            **_line_render_kwargs(),
+        )
+
+        best_idx = int(np.argmax(np.array(val_acc)))
+        best_epoch = epochs[best_idx]
+        best_acc_raw = val_acc[best_idx]
+        best_acc_plot = val_acc_plot[best_idx]
+        ax.scatter([best_epoch], [best_acc_plot], s=36, color=color, edgecolors="#111111", zorder=6)
+        offset, label_pos = _pick_annotation_offset(best_epoch, best_acc_plot, used_label_points)
+        ax.annotate(
+            f"{best_acc_raw:.2f}@{best_epoch}",
+            (best_epoch, best_acc_plot),
+            textcoords="offset points",
+            xytext=offset,
+            fontsize=8.4,
+            color=color,
+            bbox=dict(boxstyle="round,pad=0.16", facecolor="white", edgecolor="none", alpha=0.74),
+            arrowprops=dict(arrowstyle="-", color=color, lw=0.75, shrinkA=0, shrinkB=4, alpha=0.8),
+        )
+        used_label_points.append(label_pos)
         any_ok = True
 
     if not any_ok:
-        plt.close()
+        plt.close(fig)
         return None
 
-    plt.xlabel("Epoch")
-    plt.ylabel("Val Acc@1 (%)")
-    plt.ylim(0, 105)
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    plt.tight_layout()
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Val Acc@1 (%)")
+    ax.set_ylim(50, 100)
+    _set_x_epoch_ticks(ax, all_epochs)
+    _set_finer_y_ticks(ax, y_major_step=5)
+    ax.margins(x=0.04, y=0.06)
+    ax.legend(loc="lower left", frameon=False)
+    fig.tight_layout()
 
     out_path = out_dir / out_name
-    plt.savefig(out_path, dpi=220)
-    plt.close()
+    fig.savefig(out_path, dpi=240)
+    plt.close(fig)
     return out_path
 
 
 def main() -> None:
     args = parse_args()
+    _setup_plot_style()
 
     outputs_dir = Path(args.outputs_dir)
     if not outputs_dir.exists():
@@ -376,9 +728,23 @@ def main() -> None:
     finetune_dirs = sorted([p for p in outputs_dir.glob(args.finetune_glob) if p.is_dir()])
     pretrain_dirs = sorted([p for p in outputs_dir.glob(args.pretrain_glob) if p.is_dir()])
 
+    if not finetune_dirs:
+        print(
+            f"[WARN] No finetune runs found with glob '{args.finetune_glob}' under: {outputs_dir.resolve()}"
+        )
+    else:
+        print(f"[INFO] Found {len(finetune_dirs)} finetune runs")
+
+    if not pretrain_dirs:
+        print(
+            f"[WARN] No pretrain runs found with glob '{args.pretrain_glob}' under: {outputs_dir.resolve()}"
+        )
+    else:
+        print(f"[INFO] Found {len(pretrain_dirs)} pretrain runs")
+
     # 1) pretrain curves
     for d in pretrain_dirs:
-        plot_pretrain_ssl_curve(d, out_dir)
+        plot_pretrain_fcmae_curve(d, out_dir)
 
     # 2) finetune curves + confusion matrices
     summaries: List[Dict[str, Any]] = []
@@ -390,29 +756,32 @@ def main() -> None:
         plot_finetune_curves(d, out_dir)
 
         model_name, weight_name = parse_finetune_name(d.name)
-        epochs_for_cm = pick_epochs(rows, max_k=args.max_epochs_for_cm)
-        best_row = max(rows, key=lambda r: r.get("best_metric", -1))
-        best_epoch = best_row.get("best_epoch", None)
-        last_epoch = int(rows[-1].get("epoch", rows[-1].get("epoch", -1)))
 
-        for e in epochs_for_cm:
-            r = next((x for x in rows if int(x.get("epoch", -1)) == e), None)
-            if r is None:
-                continue
-            cm = r.get("val", {}).get("confusion_matrix")
-            if cm is None:
-                continue
-            tag = "best" if isinstance(best_epoch, int) and e == best_epoch else "last"
-            if e != last_epoch and tag == "last":
-                continue
+        # 仅导出验证集 best epoch 的混淆矩阵
+        best_row = max(rows, key=lambda r: r.get("best_metric", -1))
+        best_epoch = best_row.get("best_epoch", best_row.get("epoch", None))
+        best_val_row = None
+        if isinstance(best_epoch, int):
+            best_val_row = next((x for x in rows if int(x.get("epoch", -1)) == best_epoch), None)
+        if best_val_row is None:
+            best_val_row = best_row
+
+        best_val_cm = best_val_row.get("val", {}).get("confusion_matrix")
+        if best_val_cm is not None:
             plot_confusion_matrix(
-                cm,
-                out_path=out_dir / f"cm_{model_name}_{weight_name}_{tag}.png",
+                best_val_cm,
+                out_path=out_dir / f"cm_{model_name}_{weight_name}_best.png",
             )
 
         s = finetune_summary(d)
         if s is not None:
             summaries.append(s)
+            test_cm = s.get("test_cm")
+            if test_cm is not None:
+                plot_confusion_matrix(
+                    test_cm,
+                    out_path=out_dir / f"cm_{model_name}_{weight_name}_test.png",
+                )
 
     # 3) summary tables
     write_csv(summaries, out_dir / "metrics_summary.csv")
